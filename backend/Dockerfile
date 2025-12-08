@@ -1,22 +1,24 @@
-FROM node:20-alpine
+FROM node:18-alpine
 
 WORKDIR /app
 
-# Копируем package files
-COPY backend/package*.json ./
-RUN npm ci --only=production
+# Копируем корневой package.json (если есть)
+COPY package.json .
 
-# Копируем исходники и собираем
-COPY backend/tsconfig.json ./
-COPY backend/src ./src
-RUN npm run build
+# Устанавливаем зависимости
+RUN npm install
 
-# Копируем frontend build если есть
-COPY backend/public ./public
+# Копируем frontend и собираем его
+COPY frontend/package.json frontend/
+RUN cd frontend && npm install && npm run build
 
-# Открываем порт
-EXPOSE 3000
+# Копируем backend
+COPY backend/ backend/
+RUN cd backend && npm install
 
-# Запускаем приложение
+# Копируем собранный frontend в backend/public
+RUN cp -r frontend/dist/* backend/public/
+
+# Запускаем сервер
+WORKDIR /app/backend
 CMD ["npm", "start"]
-
