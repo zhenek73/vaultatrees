@@ -1,0 +1,22 @@
+{
+  "name": "malinkatrees",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "cd frontend && npm run dev",
+    "dev:frontend": "cd frontend && npm run dev",
+    "dev:backend": "cd backend && npm run dev",
+    "build": "cd frontend && npm run build",
+    "build:frontend": "cd frontend && npm run build",
+    "build:backend": "cd backend && npm run build",
+    "install:all": "cd frontend && npm install && cd ../backend && npm install",
+    "install:frontend": "cd frontend && npm install",
+    "install:backend": "cd backend && npm install"
+  },
+  "description": "Telegram Mini App для новогодней ёлки с токенами MALINKA",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/zhenek73/malinkatrees"
+  }
+}
+
