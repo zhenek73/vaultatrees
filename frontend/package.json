@@ -8,8 +8,6 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.38.4",
-    "@tsparticles/react": "^3.0.0",
-    "@tsparticles/slim": "^3.0.0",
     "@twa-dev/sdk": "^7.5.0",
     "lucide-react": "^0.263.1",
     "qrcode.react": "^4.2.0",
