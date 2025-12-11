@@ -3,12 +3,7 @@
     "version": "1.0.0",
     "private": true,
     "scripts": {
-      "prepare": "cd frontend && npm ci && cd ../backend && npm ci",
-      "build": "cd frontend && npm run build",
+      "build": "cd frontend && npm ci && npm run build && cd ../backend && npm ci",
       "start": "cd backend && npm start"
-    },
-    "workspaces": [
-      "frontend",
-      "backend"
-    ]
+    }
   }
