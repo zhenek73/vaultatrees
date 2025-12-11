@@ -41,3 +41,4 @@ npm start      # Запуск production
 - Обрабатывает memo и сохраняет украшения в Supabase
 - Отправляет broadcast через Supabase Realtime
 
+

@@ -32,3 +32,4 @@ CREATE POLICY "Allow public read access" ON decorations
 CREATE POLICY "Allow service role insert" ON decorations
   FOR INSERT WITH CHECK (true);
 
+

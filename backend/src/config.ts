@@ -24,3 +24,4 @@ if (!config.supabase.url || !config.supabase.anonKey) {
   console.warn('   Create .env file with these variables')
 }
 
+
