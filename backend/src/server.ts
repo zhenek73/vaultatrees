@@ -22,7 +22,7 @@ app.use((req, res, next) => {
 })
 
 // Статические файлы фронтенда
-app.use(express.static(path.join(__dirname, '../public')))
+app.use(express.static(path.join(__dirname, '../../frontend/dist')))
 
 // Health check
 app.get('/health', (req, res) => {
@@ -60,7 +60,7 @@ app.get('/api/donors', async (req, res) => {
 
 // SPA fallback - все остальные маршруты возвращают index.html
 app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, '../public/index.html'))
+  res.sendFile(path.join(__dirname, '../../frontend/dist/index.html'))
 })
 
 export function startServer(): void {
