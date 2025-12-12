@@ -355,9 +355,9 @@ useEffect(() => {
   }, [decorations])
 
   return (
-    <div className="relative w-full min-h-screen flex items-center justify-center bg-black" style={{ maxWidth: '512px', margin: '0 auto' }}>
-      <div className="relative" style={{ aspectRatio: '512 / 1024', width: '100%', maxWidth: '512px' }}>
-    
+<div className="fixed inset-0 flex items-center justify-center bg-black overflow-hidden">
+    <div className="relative w-full h-full max-w-lg mx-auto" style={{ aspectRatio: '512 / 1024' }}>
+      {/* Вся твоя ёлка внутри */}
       {/* Фоновое изображение ёлки на весь экран */}
       <img 
         ref={treeImageRef}
