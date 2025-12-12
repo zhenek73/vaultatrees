@@ -63,20 +63,6 @@ export default function App() {
   const [showDonatePanel, setShowDonatePanel] = useState(false)
   const [showLog, setShowLog] = useState(false)
 
-  // Безопасная загрузка WebApp SDK (для будущего использования)
-  useEffect(() => {
-    try {
-      import('@twa-dev/sdk').then((WebApp) => {
-        WebApp.default.ready()
-        WebApp.default.expand()
-      }).catch(() => {
-        // WebApp SDK недоступен в браузере - это нормально
-      })
-    } catch (e) {
-      // Игнорируем ошибки
-    }
-  }, [])
-
   // Окно ожидания с таймером обратного отсчета
   useEffect(() => {
     if (waitingForPayment) {
@@ -250,21 +236,6 @@ useEffect(() => {
     return lightPositions.map(() => Math.random() * 2)
   }, [lightPositions])
 
-  const lightScreenPositions = useMemo(() => {
-    if (lightPositions.length === 0) return [];
-  
-    const SCALE_X = 512 / 1024; // масштабируем только по ширине
-  
-    // реальные позиции из JSON
-    const positions = lightPositions.map(pos => ({
-      screenX: pos.x * SCALE_X + 0,
-      screenY: pos.y * SCALE_X + 0
-    }));
-  
-    
-  
-    return positions;
-  }, [lightPositions]);
   
   
   
@@ -355,90 +326,74 @@ useEffect(() => {
   }, [decorations])
 
   return (
-<div className="fixed inset-0 flex items-center justify-center bg-black overflow-hidden">
-    <div className="relative w-full h-full max-w-lg mx-auto" style={{ aspectRatio: '512 / 1024' }}>
-      {/* Вся твоя ёлка внутри */}
-      {/* Фоновое изображение ёлки на весь экран */}
-      <img 
-        ref={treeImageRef}
-        src="/tree-base.png" 
-        alt="Christmas Tree" 
-        className="absolute inset-0 w-full h-full"
+    <div className="fixed inset-0 flex items-center justify-center bg-black overflow-hidden">
+      <div 
+        className="relative w-full max-w-lg mx-auto flex items-center justify-center"
         style={{ 
-          width: '512px',
-          height: 'auto', // 1024 или auto, если хочешь, чтобы сохранялся ratio
-          objectFit: 'cover', // или 'contain', если хочешь видимую середину
-          objectPosition: 'center top', // центр по ширине, сверху по высоте
-          position: 'absolute',
-          left: '50%',
-          transform: 'translateX(-50%)',
-          zIndex: 1
+          height: 'var(--tg-viewport-stable-height, 100vh)',
+          aspectRatio: '512 / 1024'
         }}
-      />
+      >
+        {/* Фоновое изображение ёлки на весь экран */}
+        <img 
+          ref={treeImageRef}
+          src="/tree-base.png" 
+          alt="Christmas Tree" 
+          className="absolute inset-0 w-full h-full object-contain object-center pointer-events-none z-1"
+        />
 
 
-      {/* Огоньки - показываем столько, сколько донатов типа 'light', используя точные позиции из маски заказчика */}
-      {(() => {
-        const lightCount = decorations.filter(d => d.type?.toLowerCase() === 'light').length
-        if (lightScreenPositions.length === 0) return null
-        
-        return Array.from({ length: lightCount }, (_, i) => {
-          const screenPos = lightScreenPositions[i % lightScreenPositions.length]
-          if (!screenPos) return null
-          const color = lightColors[i % lightColors.length] || LIGHT_COLORS[0]
-          const delay = lightDelays[i % lightDelays.length] || 0
-          
-          return (
-            <div
-              key={`light-${i}`}
-              className="light-bulb"
-              style={{
-                position: 'absolute',
-                left: `${screenPos.screenX}px`,
-                top: `${screenPos.screenY}px`,
-                backgroundColor: color,
-                transform: 'translate(-50%, -50%)',
-                zIndex: 15,
-                animationDelay: `${delay}s`,
-                boxShadow: `0 0 8px ${color}, 0 0 12px ${color}, 0 0 16px ${color}`
-              }}
-            />
-          )
-        })
-      })()}
+      {/* Огоньки — точное позиционирование через imageBounds */}
+      <div className="absolute inset-0 pointer-events-none z-15">
+        {stats.lights > 0 && imageBounds && lightPositions.length > 0 && (
+          Array.from({ length: stats.lights }, (_, i) => {
+            const pos = lightPositions[i % lightPositions.length]
+            const color = lightColors[i % lightColors.length] || LIGHT_COLORS[0]
+            const delay = lightDelays[i % lightDelays.length] || 0
+
+            const relX = pos.x / 1024   // оригинал light-positions.json — 512×1024
+            const relY = pos.y / 2048
+
+            const screenX = imageBounds.left + relX * imageBounds.width
+            const screenY = imageBounds.top + relY * imageBounds.height
+
+            return (
+              <div
+                key={`light-${i}`}
+                className="absolute rounded-full animate-pulse"
+                style={{
+                  left: `${screenX}px`,
+                  top: `${screenY}px`,
+                  width: imageBounds ? `${imageBounds.width * 0.012}px` : '12px',   // ~6px на 512px ширине ёлки
+                  height: imageBounds ? `${imageBounds.width * 0.012}px` : '12px',
+                  backgroundColor: color,
+                  transform: 'translate(-50%, -50%)',
+                  boxShadow: `0 0 ${imageBounds ? imageBounds.width * 0.023 : 12}px ${color}, 0 0 ${imageBounds ? imageBounds.width * 0.039 : 20}px ${color}`,
+                  animationDelay: `${delay}s`,
+                }}
+              />
+            )
+          })
+        )}
+      </div>
       
-       {/* Шарики — теперь дети ёлки, не двигаются при скролле */}
-       <div className="absolute inset-0 pointer-events-none z-20">
-        {(() => {
-          const ballCount = decorations.filter(d => d.type?.toLowerCase() === 'ball').length
-          if (!imageBounds || ballPositions.length === 0 || ballCount === 0) return null
-
-          //const SCALE_X = imageBounds.width / 1024
-          //const SCALE_Y = imageBounds.height / 2048
-          const SPREAD = 1.1  // ← меняй это число: 1.05 = +5% ширины, 1.10 = +10%, 1.00 = без изменений
-          const SPREADY = 1.071  // ← меняй это число: 1.05 = +5% ширины, 1.10 = +10%, 1.00 = без изменений
-
-
-          return Array.from({ length: ballCount }, (_, i) => {
+      {/* Шарики — точное позиционирование */}
+      <div className="absolute inset-0 pointer-events-none z-20">
+        {stats.balls > 0 && imageBounds && ballPositions.length > 0 && (
+          Array.from({ length: stats.balls }, (_, i) => {
             const pos = ballPositions[i % ballPositions.length]
             const ball = decorations.filter(d => d.type === 'ball')[i]
 
-            const baseRelX = pos.x / 2
-            const baseRelY = pos.y / 2
-            //const screenX = (pos.x * SCALE_X)+1
-            //const screenY = (pos.y * SCALE_Y)+50
+            const relX = pos.x / 1024  // ball-positions.json — 1024×2048
+            const relY = pos.y / 2048
 
-            //const screenX = pos.x/2
-            //const screenY = pos.y/1.6-34
-            
-            const screenX = 0.5 + (baseRelX - 0.5) * SPREAD-30
-            const screenY = 0.5 + (baseRelY - 0.5) * SPREADY-20  // высоту не трогаем
+            const screenX = imageBounds.left + relX * imageBounds.width
+            const screenY = imageBounds.top + relY * imageBounds.height+25
 
-            //console.log(`Шарик ${i + 1}: original (${pos.x}, ${pos.y}) → rendered (${screenX.toFixed(3)}px, ${screenY.toFixed(3)}px)`)
             return (
               <div
                 key={`ball-${ball?.id || i}`}
-                className="group absolute -translate-x-1/2 -translate-y-1/2 pointer-events-auto transition-opacity"
+                className="group absolute -translate-x-1/2 -translate-y-1/2 pointer-events-auto"
                 style={{
                   left: `${screenX}px`,
                   top: `${screenY}px`,
@@ -447,9 +402,13 @@ useEffect(() => {
                 <img
                   src="/malinka-ball.svg"
                   alt="Шарик"
-                  className="w-9 h-10 drop-shadow-2xl"
+                  style={{
+                    width: imageBounds ? `${imageBounds.width * 0.075}px` : '48px',   // ~23px на 512px ширине ёлки, подгони под вкус
+                    height: 'auto',  // сохраняем пропорции SVG
+                    filter: 'drop-shadow(0 4px 8px rgba(0,0,0,0.5))'
+                  }}
                 />
-                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 opacity-0 group-hover:opacity-100  transition-opacity pointer-events-none">
+                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
                   <div className="bg-yellow-400 text-black text-xs font-bold px-3 py-1 rounded-lg shadow-lg whitespace-nowrap">
                     {ball?.username || 'Аноним'}
                   </div>
@@ -457,8 +416,7 @@ useEffect(() => {
               </div>
             )
           })
-        })()}
-      </div>
+        )}
       </div>
       
       {/* Свечи с текстом */}
@@ -539,7 +497,7 @@ useEffect(() => {
       </div>
 
       {/* Кнопка "Украсить ёлку" внизу (поднята выше) */}
-      <div className="absolute left-1/2 -translate-x-1/2 z-40 w-full px-4" style={{ bottom: '16px' }}>
+      <div className="absolute left-1/2 -translate-x-1/2 z-40 w-full px-4" style={{ bottom: 'max(16px, env(safe-area-inset-bottom, var(--tg-content-safe-area-inset-bottom, 20px)))' }}>
         {!showDonatePanel ? (
           <button
             onClick={() => setShowDonatePanel(true)}
@@ -798,6 +756,7 @@ useEffect(() => {
           <p className="text-pink-200 text-xs mt-1">Всего: {stats.total} украшений</p>
         </div>
       )}
+      </div>
     </div>
   )
 }

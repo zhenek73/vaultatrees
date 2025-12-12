@@ -3,17 +3,29 @@ import ReactDOM from 'react-dom/client'
 import App from './App'
 import './index.css'
 
-// Безопасная инициализация Telegram Web App
+// Безопасная инициализация Telegram SDK — только в реальном Telegram
 if (typeof window !== 'undefined') {
-  import('@twa-dev/sdk').then((WebApp) => {
-    try {
-      WebApp.default.ready()
-      WebApp.default.expand()
-    } catch (e) {
-      console.log('Telegram Web App не доступен (запуск в браузере)')
+  import('@telegram-apps/sdk').then(({ miniApp, viewport }) => {
+    if ((window as any).Telegram?.WebApp) {
+      try {
+        miniApp.ready()
+
+        if (viewport.requestFullscreen?.isAvailable?.()) {
+          viewport.requestFullscreen()
+        }
+        if (viewport.bindCssVars?.isAvailable?.()) {
+          viewport.bindCssVars()  // --tg-viewport-stable-height только в TG
+        }
+
+        console.log('Telegram SDK инициализирован (в Telegram)')
+      } catch (e) {
+        console.log('Telegram SDK: ошибка в TG (игнорируем)', e)
+      }
+    } else {
+      console.log('Запуск в браузере: SDK пропущен, используем fallback 100vh')
     }
   }).catch(() => {
-    // SDK недоступен - это нормально для браузера
+    console.log('SDK не загружен (браузер)')
   })
 }
 
