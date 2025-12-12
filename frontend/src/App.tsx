@@ -25,7 +25,35 @@ const LIGHT_COLORS = [
 ]
 
 export default function App() {
-  const [decorations, setDecorations] = useState<Decoration[]>([])
+  //const [decorations, setDecorations] = useState<Decoration[]>([])
+
+  const [decorations, setDecorations] = useState<Decoration[]>(() => {
+    /* Для тестирования */
+      const testLights = Array.from({ length: 300 }, (_, i): Decoration => ({
+        id: -i - 1,
+        type: 'light',
+        from_account: 'testuser',
+        username: `Тестер #${i + 1}`,
+        amount: '1',
+        created_at: new Date(Date.now() - i * 1000).toISOString(),
+        tx_id: `test-tx-${i}`
+      }))
+  
+      const testBalls = Array.from({ length: 73 }, (_, i): Decoration => ({
+        id: -1000 - i,
+        type: 'ball',
+        from_account: 'testuser',
+        username: `Шарик #${i + 1}`,
+        amount: '10',
+        created_at: new Date(Date.now() - i * 1000).toISOString(),
+        tx_id: `test-ball-${i}`
+      }))
+  
+      return [...testLights, ...testBalls]
+   
+    return []  // пусто — реальные данные будут загружаться из бэкенда
+  })
+
   const [loading, setLoading] = useState(true)
   const [modalType, setModalType] = useState<ModalType>(null)
   const [waitingForPayment, setWaitingForPayment] = useState(false)
@@ -58,7 +86,7 @@ export default function App() {
           if (prev <= 1) {
             clearInterval(countdownInterval)
             setWaitingForPayment(false)
-            loadData() // Обновляем данные после закрытия
+           // loadData() // Обновляем данные после закрытия
             return 0
           }
           return prev - 1
@@ -66,7 +94,7 @@ export default function App() {
       }, 1000)
 
       const dataInterval = setInterval(() => {
-        loadData()
+      //  loadData()
       }, 5000)
 
       return () => {
@@ -78,12 +106,14 @@ export default function App() {
 
   // Загрузка данных при монтировании и realtime подписка
   useEffect(() => {
-    loadData()
+   /*для тестирования надо закоментить лоад и поставить интервал 300000*/
+    // loadData()
     
     // Подписка на realtime обновления через API (polling каждые 3 секунды)
-    const interval = setInterval(loadData, 3000)
+    const interval = setInterval(loadData, 300000)
     
-    return () => clearInterval(interval)
+   return () => clearInterval(interval)
+   
   }, [])
 
   async function loadData() {
@@ -148,41 +178,65 @@ export default function App() {
       })
   }, [])
 
-  // Вычисление реальных размеров и позиции изображения на экране
+//добавляем шарики
+  const [ballPositions, setBallPositions] = useState<Position[]>([])
+
   useEffect(() => {
-    const updateImageBounds = () => {
-      if (treeImageRef.current) {
-        const rect = treeImageRef.current.getBoundingClientRect()
-        const containerRect = treeImageRef.current.parentElement?.getBoundingClientRect()
-        if (containerRect) {
-          setImageBounds({
-            left: rect.left - containerRect.left,
-            top: rect.top - containerRect.top,
-            width: rect.width,
-            height: rect.height
-          })
-        }
-      }
-    }
-
-    // Обновляем при загрузке изображения
-    if (treeImageRef.current?.complete) {
-      updateImageBounds()
-    } else {
-      treeImageRef.current?.addEventListener('load', updateImageBounds)
-    }
-
-    // Обновляем при изменении размера окна
-    window.addEventListener('resize', updateImageBounds)
-    
-    // Обновляем сразу
-    updateImageBounds()
-
-    return () => {
-      window.removeEventListener('resize', updateImageBounds)
-      treeImageRef.current?.removeEventListener('load', updateImageBounds)
-    }
+    fetch('/ball-positions.json')
+      .then(res => res.json())
+      .then(data => setBallPositions(data))
+      .catch(() => setBallPositions([]))
   }, [])
+
+
+  // Вычисление реальных размеров и позиции изображения на экране
+  // Вычисление реальных видимых границ картинки при object-fit: contain
+useEffect(() => {
+  const updateImageBounds = () => {
+    const img = treeImageRef.current;
+    if (!img) return;
+
+    const container = img.parentElement;
+    if (!container) return;
+
+    const containerRect = container.getBoundingClientRect();
+    const naturalWidth = img.naturalWidth;
+    const naturalHeight = img.naturalHeight;
+
+    if (!naturalWidth || !naturalHeight) return;
+
+    const containerW = containerRect.width;
+    const containerH = containerRect.height;
+
+    const scale = Math.min(
+      containerW / naturalWidth,
+      containerH / naturalHeight
+    );
+
+    const displayWidth = naturalWidth * scale;
+    const displayHeight = naturalHeight * scale;
+
+    const offsetLeft = (containerW - displayWidth) / 2;
+    const offsetTop = (containerH - displayHeight) / 2;
+
+    setImageBounds({
+      left: offsetLeft,
+      top: offsetTop,
+      width: displayWidth,
+      height: displayHeight
+    });
+  };
+
+  updateImageBounds();
+  window.addEventListener("resize", updateImageBounds);
+  treeImageRef.current?.addEventListener("load", updateImageBounds);
+
+  return () => {
+    window.removeEventListener("resize", updateImageBounds);
+    treeImageRef.current?.removeEventListener("load", updateImageBounds);
+  };
+}, []);
+
 
   // Случайные цвета и задержки для каждого огонька (стабильные при каждом рендере)
   const lightColors = useMemo(() => {
@@ -196,23 +250,24 @@ export default function App() {
     return lightPositions.map(() => Math.random() * 2)
   }, [lightPositions])
 
-  // Вычисление реальных координат (screenX, screenY) для каждого огонька с учетом масштаба
   const lightScreenPositions = useMemo(() => {
-    if (!imageBounds || lightPositions.length === 0) return []
+    if (lightPositions.length === 0) return [];
+  
+    const SCALE_X = 512 / 1024; // масштабируем только по ширине
+  
+    // реальные позиции из JSON
+    const positions = lightPositions.map(pos => ({
+      screenX: pos.x * SCALE_X + 0,
+      screenY: pos.y * SCALE_X + 0
+    }));
+  
     
-    // Исходный размер изображения в координатах маски
-    const SOURCE_WIDTH = 512
-    const SOURCE_HEIGHT = 1024
-    
-    // Масштаб для пересчета координат
-    const scaleX = imageBounds.width / SOURCE_WIDTH
-    const scaleY = imageBounds.height / SOURCE_HEIGHT
-    
-    return lightPositions.map(pos => ({
-      screenX: imageBounds.left + (pos.x * scaleX),
-      screenY: imageBounds.top + (pos.y * scaleY)
-    }))
-  }, [imageBounds, lightPositions])
+  
+    return positions;
+  }, [lightPositions]);
+  
+  
+  
 
   // Генерация позиций для украшений (шарики, свечи, подарки)
   const decorationPositions = useMemo(() => {
@@ -300,7 +355,9 @@ export default function App() {
   }, [decorations])
 
   return (
-    <div className="relative w-full min-h-screen" style={{ width: '100%', minHeight: '100vh', maxWidth: '512px', margin: '0 auto' }}>
+    <div className="relative w-full min-h-screen flex items-center justify-center bg-black" style={{ maxWidth: '512px', margin: '0 auto' }}>
+      <div className="relative" style={{ aspectRatio: '512 / 1024', width: '100%', maxWidth: '512px' }}>
+    
       {/* Фоновое изображение ёлки на весь экран */}
       <img 
         ref={treeImageRef}
@@ -308,14 +365,18 @@ export default function App() {
         alt="Christmas Tree" 
         className="absolute inset-0 w-full h-full"
         style={{ 
-          width: '100%', 
-          height: '100%',
-          objectFit: 'contain',
-          objectPosition: 'center',
+          width: '512px',
+          height: 'auto', // 1024 или auto, если хочешь, чтобы сохранялся ratio
+          objectFit: 'cover', // или 'contain', если хочешь видимую середину
+          objectPosition: 'center top', // центр по ширине, сверху по высоте
+          position: 'absolute',
+          left: '50%',
+          transform: 'translateX(-50%)',
           zIndex: 1
         }}
       />
-      
+
+
       {/* Огоньки - показываем столько, сколько донатов типа 'light', используя точные позиции из маски заказчика */}
       {(() => {
         const lightCount = decorations.filter(d => d.type?.toLowerCase() === 'light').length
@@ -346,38 +407,59 @@ export default function App() {
         })
       })()}
       
-      {/* Шарики - малинка SVG */}
-      {decorations
-        .filter(d => d.type?.toLowerCase() === 'ball')
-        .map((dec, i) => {
-          const pos = decorationPositions.get(dec.id || i)
-          if (!pos) return null
-          return (
-            <div
-              key={`ball-${dec.id || i}`}
-              className="absolute group"
-              style={{
-                left: `${(pos.x / 320) * 100}%`,
-                top: `${(pos.y / 400) * 100}%`,
-                transform: 'translate(-50%, -50%)',
-                zIndex: 20
-              }}
-            >
-              <img
-                src="https://paycashswap.com/_next/static/media/token-mlnk.eb4fdd5f.svg"
-                alt="MLNK"
-                className="w-10 h-10 animate-bounce"
-                style={{ filter: 'drop-shadow(0 0 4px rgba(255, 215, 0, 0.6))' }}
-              />
-              {/* Tooltip с именем - золотая табличка */}
-              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
-                <div className="bg-yellow-400 text-black text-xs font-bold px-2 py-1 rounded shadow-lg border border-yellow-600 whitespace-nowrap">
-                  {dec.username || dec.from_account}
+       {/* Шарики — теперь дети ёлки, не двигаются при скролле */}
+       <div className="absolute inset-0 pointer-events-none z-20">
+        {(() => {
+          const ballCount = decorations.filter(d => d.type?.toLowerCase() === 'ball').length
+          if (!imageBounds || ballPositions.length === 0 || ballCount === 0) return null
+
+          //const SCALE_X = imageBounds.width / 1024
+          //const SCALE_Y = imageBounds.height / 2048
+          const SPREAD = 1.1  // ← меняй это число: 1.05 = +5% ширины, 1.10 = +10%, 1.00 = без изменений
+          const SPREADY = 1.071  // ← меняй это число: 1.05 = +5% ширины, 1.10 = +10%, 1.00 = без изменений
+
+
+          return Array.from({ length: ballCount }, (_, i) => {
+            const pos = ballPositions[i % ballPositions.length]
+            const ball = decorations.filter(d => d.type === 'ball')[i]
+
+            const baseRelX = pos.x / 2
+            const baseRelY = pos.y / 2
+            //const screenX = (pos.x * SCALE_X)+1
+            //const screenY = (pos.y * SCALE_Y)+50
+
+            //const screenX = pos.x/2
+            //const screenY = pos.y/1.6-34
+            
+            const screenX = 0.5 + (baseRelX - 0.5) * SPREAD-30
+            const screenY = 0.5 + (baseRelY - 0.5) * SPREADY-20  // высоту не трогаем
+
+            //console.log(`Шарик ${i + 1}: original (${pos.x}, ${pos.y}) → rendered (${screenX.toFixed(3)}px, ${screenY.toFixed(3)}px)`)
+            return (
+              <div
+                key={`ball-${ball?.id || i}`}
+                className="group absolute -translate-x-1/2 -translate-y-1/2 pointer-events-auto transition-opacity"
+                style={{
+                  left: `${screenX}px`,
+                  top: `${screenY}px`,
+                }}
+              >
+                <img
+                  src="/malinka-ball.svg"
+                  alt="Шарик"
+                  className="w-9 h-10 drop-shadow-2xl"
+                />
+                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 opacity-0 group-hover:opacity-100  transition-opacity pointer-events-none">
+                  <div className="bg-yellow-400 text-black text-xs font-bold px-3 py-1 rounded-lg shadow-lg whitespace-nowrap">
+                    {ball?.username || 'Аноним'}
+                  </div>
                 </div>
               </div>
-            </div>
-          )
-        })}
+            )
+          })
+        })()}
+      </div>
+      </div>
       
       {/* Свечи с текстом */}
       {decorations
