@@ -39,7 +39,7 @@ export default function App() {
         tx_id: `test-tx-${i}`
       }))
   
-      const testBalls = Array.from({ length: 73 }, (_, i): Decoration => ({
+      const testBalls = Array.from({ length: 66 }, (_, i): Decoration => ({
         id: -1000 - i,
         type: 'ball',
         from_account: 'testuser',
@@ -386,9 +386,16 @@ useEffect(() => {
 
             const relX = pos.x / 1024  // ball-positions.json — 1024×2048
             const relY = pos.y / 2048
-
-            const screenX = imageBounds.left + relX * imageBounds.width
-            const screenY = imageBounds.top + relY * imageBounds.height+25
+            
+            // Растяжка +5% по X и Y (чтобы шарики чуть разъехались в стороны и вниз)
+            const SPREAD_X = 1.1
+            const SPREAD_Y = 1.1
+            
+            const adjustedRelX = 0.5 + (relX - 0.5) * SPREAD_X
+            const adjustedRelY = 0.5 + (relY - 0.5) * SPREAD_Y
+            
+            const screenX = imageBounds.left + adjustedRelX * imageBounds.width
+            const screenY = imageBounds.top + adjustedRelY * imageBounds.height+13
 
             return (
               <div
