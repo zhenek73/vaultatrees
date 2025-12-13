@@ -559,7 +559,7 @@ useEffect(() => {
                   src="/envelope.png"
                   alt="Открытка"
                   style={{
-                    width: imageBounds ? `${imageBounds.width * 0.045}px` : '48px',
+                    width: imageBounds ? `${imageBounds.width * 0.05}px` : '48px',
                     height: 'auto',
                     filter: 'drop-shadow(0 4px 8px rgba(0,0,0,0.5))'
                   }}
