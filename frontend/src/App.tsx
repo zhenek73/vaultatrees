@@ -30,7 +30,7 @@ export default function App() {
   //const [decorations, setDecorations] = useState<Decoration[]>([])
 
   const [decorations, setDecorations] = useState<Decoration[]>(() => {
-    /* Для тестирования */
+    /* Для тестирования 
       const testLights = Array.from({ length: 300 }, (_, i): Decoration => ({
         id: -i - 1,
         type: 'light',
@@ -63,7 +63,7 @@ export default function App() {
       }))
 
    //   return [...testLights, ...testBalls, ...testEnvelopes]
-   
+   */
     return []  // пусто — реальные данные будут загружаться из бэкенда
   })
 
