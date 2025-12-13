@@ -223,6 +223,11 @@ export async function startParser(): Promise<void> {
   console.log(`   Account: ${config.eos.account}`)
   console.log(`   API: ${config.eos.hyperionApiUrl}`)
 
+  // Инициализация lastTxId, если пустой
+  if (!await getLastProcessedTxId()) {
+    await setLastProcessedTxId("97261f313933ee0976af3bb83b5543a64dbf1d1b245a2f67562648ea7feea1e4")
+  }
+
   // Начальная загрузка последних транзакций
   await pollTransactions()
 
@@ -236,13 +241,14 @@ async function pollTransactions(): Promise<void> {
   try {
     console.log(`🔄 [EOS] Polling for new transactions...`)
     
-    // Получаем последний обработанный tx_id из базы
-    const lastTxId = await getLastProcessedTxId()
-    if (lastTxId) {
-      console.log(`📌 [EOS] Last processed tx_id: ${lastTxId.substring(0, 8)}...`)
-    } else {
-      console.log(`📌 [EOS] No last processed tx_id found, starting fresh`)
-    }
+    // Жёстко установленный lastTxId для начала обработки с продакшн транзакций
+    const hardcodedTxId = "97261f313933ee0976af3bb83b5543a64dbf1d1b245a2f67562648ea7feea1e4"
+    
+    // Получаем lastTxId из базы или используем жёстко заданный
+    const dbTxId = await getLastProcessedTxId()
+    const lastTxId = dbTxId && dbTxId > hardcodedTxId ? dbTxId : hardcodedTxId
+    
+    console.log(`📌 [EOS] Using lastTxId: ${lastTxId.substring(0, 8)}...`)
     
     const transfers = await fetchTransfers(100)
     
@@ -252,24 +258,8 @@ async function pollTransactions(): Promise<void> {
     }
 
     // Фильтруем только новые транзакции (после lastTxId)
-    let newTransfers: EOSTransfer[] = []
+    const newTransfers = transfers.filter(t => t.trx_id > lastTxId)
     
-    if (lastTxId) {
-      // Если есть lastTxId - фильтруем только новые
-      newTransfers = transfers.filter(t => {
-        // Сравниваем по trx_id (лексикографически) - tx_id уникален и сортируется
-        return t.trx_id > lastTxId
-      })
-    } else {
-      // Если lastTxId нет - устанавливаем его на самую новую транзакцию без обработки
-      if (transfers.length > 0) {
-        const latestTxId = transfers[0].trx_id // transfers уже отсортированы по убыванию
-        await setLastProcessedTxId(latestTxId)
-        console.log(`📌 [EOS] Initialized last processed tx_id: ${latestTxId.substring(0, 8)}... (no processing, starting fresh)`)
-      }
-      return
-    }
-
     if (newTransfers.length === 0) {
       console.log(`📭 [EOS] No new transfers found (all already processed)`)
       return
@@ -287,7 +277,7 @@ async function pollTransactions(): Promise<void> {
       processed++
     }
     
-    // Обновляем lastProcessedTxId на самый новый
+    // Обновляем lastProcessedTxId на самый новый trx_id
     await setLastProcessedTxId(latestTxId)
     
     console.log(`✅ [EOS] Processed ${processed} new transfers`)
@@ -299,4 +289,3 @@ async function pollTransactions(): Promise<void> {
 export async function getLatestTransfers(count: number = 10): Promise<EOSTransfer[]> {
   return await fetchTransfers(count)
 }
-

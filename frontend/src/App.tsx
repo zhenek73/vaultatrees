@@ -136,12 +136,11 @@ export default function App() {
     const lightsAmount = decorations
       .filter(d => d.type?.toLowerCase() === 'light')
       .reduce((sum, d) => sum + parseFloat(d.amount || '0'), 0)
-    const lights = Math.floor(lightsAmount)
     const balls = decorations.filter(d => d.type?.toLowerCase() === 'ball').length
     const envelopes = decorations.filter(d => d.type?.toLowerCase() === 'candle' || d.type?.toLowerCase() === 'envelope').length
     const gifts = decorations.filter(d => d.type?.toLowerCase() === 'gift').length
     const total = decorations.length
-    return { lights, balls, envelopes, gifts, total }
+    return { lights: Math.floor(lightsAmount), balls, envelopes, gifts, total }
   }, [decorations])
 
   // Расчёт лидирующей ставки на звезду
