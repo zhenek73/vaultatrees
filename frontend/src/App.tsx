@@ -62,7 +62,7 @@ export default function App() {
         tx_id: `test-envelope-${i}`
       }))
 
-      return [...testLights, ...testBalls, ...testEnvelopes]
+   //   return [...testLights, ...testBalls, ...testEnvelopes]
    
     return []  // пусто — реальные данные будут загружаться из бэкенда
   })
@@ -143,9 +143,21 @@ export default function App() {
 
   // Расчёт лидирующей ставки на звезду
   const starBids = useMemo(() => {
-    return decorations
+    const bids = decorations
       .filter(d => d.type?.toLowerCase() === 'star')
       .sort((a, b) => parseFloat(b.amount) - parseFloat(a.amount))
+    
+    // Убираем дубли по сумме, оставляем только максимальную
+    const uniqueBids = []
+    const seenAmounts = new Set()
+    for (const bid of bids) {
+      const amt = parseFloat(bid.amount)
+      if (!seenAmounts.has(amt)) {
+        seenAmounts.add(amt)
+        uniqueBids.push(bid)
+      }
+    }
+    return uniqueBids
   }, [decorations])
 
   const currentBid = starBids.length > 0 ? parseFloat(starBids[0].amount) : 1000  // минимум 1001, но считаем от 1000
@@ -551,12 +563,12 @@ useEffect(() => {
                   }}
                 />
                 <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
-                  <div className="bg-yellow-400 text-black text-xs font-bold px-3 py-2 rounded-lg shadow-lg border border-yellow-600 max-w-[200px]">
-                    <div className="font-semibold">{envelope?.username || 'Аноним'}</div>
-                    {envelope?.text && (
-                      <div className="text-xs mt-1 leading-tight">{envelope.text}</div>
-                    )}
-                  </div>
+                <div className="bg-yellow-400 text-black text-xs font-bold px-3 py-2 rounded-lg shadow-lg border border-yellow-600 max-w-[200px]">
+  <div className="font-semibold">{envelope?.username || envelope?.from_account || 'Аноним'}:</div>
+  {envelope?.text && (
+    <div className="text-xs mt-1 leading-tight">{envelope.text}</div>
+  )}
+</div>
                   <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-1 w-0 h-0 border-l-8 border-r-8 border-t-8 border-transparent border-t-yellow-400"></div>
                 </div>
               </div>
@@ -589,7 +601,8 @@ useEffect(() => {
           )
         })}
       
-      {/* Сияющая пятиконечная звезда на макушке — основной вариант (CSS + SVG) */}
+      {/* Сияющая пятиконечная звезда на макушке — закомментировано до окончания аукциона */}
+      {/*
       <div 
         className="absolute top-0 left-1/2 -translate-x-1/2 pointer-events-none z-25"
         style={{
@@ -597,11 +610,10 @@ useEffect(() => {
           transition: 'opacity 1s ease-in-out',
         }}
       >
-        {/* Основной вариант: CSS-звезда с градиентом, пульсацией и лучами */}
         <div 
           className="relative animate-pulse-slow"
           style={{
-            width: imageBounds ? `${imageBounds.width * 0.12}px` : '60px',  // подгони 0.10–0.15
+            width: imageBounds ? `${imageBounds.width * 0.12}px` : '60px',
             height: imageBounds ? `${imageBounds.width * 0.12}px` : '60px',
           }}
         >
@@ -623,36 +635,8 @@ useEffect(() => {
             <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 -rotate-45 w-12 h-1 bg-yellow-400 blur-sm"></div>
           </div>
         </div>
-
-        {/* Альтернатива 1: простая emoji-звезда (закомментируй основной блок выше, если хочешь сравнить) */}
-        {/*
-        <div className="text-6xl drop-shadow-2xl animate-pulse">
-          ⭐
-          <div className="absolute inset-0 text-6xl animate-ping opacity-75">✨</div>
-        </div>
-        */}
-
-        {/* Альтернатива 2: чистый SVG без лучей и анимаций (минималистично) */}
-        {/*
-        <svg 
-          viewBox="0 0 100 100" 
-          style={{ width: imageBounds ? `${imageBounds.width * 0.12}px` : '60px' }}
-          className="drop-shadow-2xl"
-        >
-          <path d="M50 0 L61 35 L98 35 L67 57 L76 90 L50 70 L24 90 L33 57 L2 35 L39 35 Z" fill="#FFD700" stroke="#FFAA00" strokeWidth="2"/>
-        </svg>
-        */}
-
-        {/* Альтернатива 3: GIF (положи файл public/star.gif и раскомментируй) */}
-        {/*
-        <img 
-          src="/star.gif" 
-          alt="Star" 
-          style={{ width: imageBounds ? `${imageBounds.width * 0.12}px` : '60px' }}
-          className="drop-shadow-2xl"
-        />
-        */}
       </div>
+      */}
 
       {/* Кнопка "Украсить ёлку" внизу (поднята выше) */}
       <div className="absolute left-1/2 -translate-x-1/2 z-40 w-full px-4" style={{ bottom: 'max(16px, env(safe-area-inset-bottom, var(--tg-content-safe-area-inset-bottom, 20px)))' }}>
@@ -691,7 +675,7 @@ useEffect(() => {
               onClick={() => handleOpenModal('star')}
               className="w-full bg-gradient-to-r from-yellow-500 via-amber-500 to-yellow-600 text-white font-bold py-3 px-6 rounded-full text-lg shadow-xl hover:scale-105 transition animate-pulse-slow"
             >
-              ⭐ Зажечь звезду (≥1001 MLNK)
+              ⭐ Зажечь звезду (∞ MLNK)
             </button>
 
             {/* Кнопка открытия лога */}
@@ -715,8 +699,8 @@ useEffect(() => {
 
       {/* Статус ожидания оплаты с таймером */}
       {waitingForPayment && (
-        <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-50">
-          <div className="bg-gradient-to-br from-purple-900 to-pink-900 rounded-2xl p-8 text-center max-w-sm mx-4 border-2 border-yellow-500/50 shadow-2xl">
+        <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-50 p-4" onClick={handleCloseModal}>
+          <div className="bg-gradient-to-br from-purple-900 to-pink-900 rounded-2xl p-6 md:p-8 text-center w-full max-w-md mx-4 md:mx-auto my-8 max-h-full overflow-y-auto border-2 border-yellow-500/50 shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <div className="animate-spin mb-4">
               <Sparkles className="w-16 h-16 text-yellow-400 mx-auto" />
             </div>
@@ -745,8 +729,8 @@ useEffect(() => {
 
       {/* Специальная модалка для аукциона звезды */}
       {modalType === 'star' && (
-        <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-50 p-4">
-          <div className="bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 rounded-3xl p-8 max-w-md w-full relative border-4 border-yellow-500/70 shadow-2xl">
+        <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-50 p-4" onClick={handleCloseModal}>
+          <div className="bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 rounded-3xl p-6 md:p-8 w-full max-w-md mx-4 md:mx-auto my-8 max-h-full overflow-y-auto relative border-4 border-yellow-500/70 shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <button onClick={handleCloseModal} className="absolute top-4 right-4 text-white/70 hover:text-white">
               <X className="w-6 h-6" />
             </button>
@@ -798,8 +782,8 @@ useEffect(() => {
 
       {/* Модалка с QR-кодом */}
       {modalType && modalType !== 'star' && (
-        <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-50 p-4">
-          <div className="bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 rounded-3xl p-8 max-w-md w-full relative border-2 border-yellow-500/30 shadow-2xl">
+        <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-50 p-4" onClick={handleCloseModal}>
+          <div className="bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 rounded-3xl p-6 md:p-8 w-full max-w-md mx-4 md:mx-auto my-8 max-h-full overflow-y-auto relative border-2 border-yellow-500/30 shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <button
               onClick={handleCloseModal}
               className="absolute top-4 right-4 text-white/70 hover:text-white transition"
@@ -903,8 +887,8 @@ useEffect(() => {
 
       {/* Лог действий - на весь экран */}
       {showLog && (
-        <div className="fixed inset-0 bg-black/95 flex flex-col z-50">
-          <div className="flex justify-between items-center p-4 border-b border-yellow-500/30">
+        <div className="fixed inset-0 bg-black/95 flex flex-col z-50" onClick={() => setShowLog(false)}>
+          <div className="flex justify-between items-center p-4 border-b border-yellow-500/30" onClick={(e) => e.stopPropagation()}>
             <h2 className="text-2xl font-bold text-white">📜 Лог действий</h2>
             <button
               onClick={() => setShowLog(false)}
@@ -913,7 +897,7 @@ useEffect(() => {
               <X className="w-6 h-6" />
             </button>
           </div>
-          <div className="flex-1 overflow-y-auto p-4 space-y-2">
+          <div className="flex-1 overflow-y-auto p-4 space-y-2" onClick={(e) => e.stopPropagation()}>
             {recentLog.length === 0 ? (
               <p className="text-gray-400 text-center">Пока нет действий</p>
             ) : (
@@ -925,24 +909,15 @@ useEffect(() => {
                   <div className="flex justify-between items-start">
                     <div className="flex-1">
                       <div className="text-yellow-400 font-bold">
-                        {dec.type === 'light' && '💡 Огонёк'}
+                        {dec.type === 'light' && `💡 Зажёг ${Math.floor(parseFloat(dec.amount))} огоньков!`}
                         {dec.type === 'ball' && '🎈 Шарик'}
                         {(dec.type === 'candle' || dec.type === 'envelope') && '📮 Открытка'}
                         {dec.type === 'gift' && '🎁 Подарок'}
+                        {dec.type === 'star' && parseFloat(dec.amount) === currentBid && `⭐ ${dec.username || dec.from_account} получает право зажечь звезду на Новый год! 🎉`}
                       </div>
                       <div className="text-white mt-1">
                         От: {dec.from_account}
                       </div>
-                      {dec.username && (
-                        <div className="text-gray-300 text-xs mt-1">
-                          Имя: {dec.username}
-                        </div>
-                      )}
-                      {dec.text && (
-                        <div className="text-gray-300 text-xs mt-1">
-                          Пожелание: {dec.text}
-                        </div>
-                      )}
                       <div className="text-pink-300 text-xs mt-1">
                         Сумма: {dec.amount}
                       </div>
