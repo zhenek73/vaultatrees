@@ -88,7 +88,7 @@ export default function App() {
           if (prev <= 1) {
             clearInterval(countdownInterval)
             setWaitingForPayment(false)
-           // loadData() // Обновляем данные после закрытия
+            loadData() // Обновляем данные после закрытия
             return 0
           }
           return prev - 1
@@ -96,7 +96,7 @@ export default function App() {
       }, 1000)
 
       const dataInterval = setInterval(() => {
-      //  loadData()
+        loadData()
       }, 5000)
 
       return () => {
@@ -109,7 +109,7 @@ export default function App() {
   // Загрузка данных при монтировании и realtime подписка
   useEffect(() => {
    /*для тестирования надо закоментить лоад и поставить интервал 300000*/
-    // loadData()
+     loadData()
     
     // Подписка на realtime обновления через API (polling каждые 3 секунды)
     const interval = setInterval(loadData, 3000)
