@@ -133,7 +133,10 @@ export default function App() {
 
   // Подсчёт статистики
   const stats = useMemo(() => {
-    const lights = decorations.filter(d => d.type?.toLowerCase() === 'light').length
+    const lightsAmount = decorations
+      .filter(d => d.type?.toLowerCase() === 'light')
+      .reduce((sum, d) => sum + parseFloat(d.amount || '0'), 0)
+    const lights = Math.floor(lightsAmount)
     const balls = decorations.filter(d => d.type?.toLowerCase() === 'ball').length
     const envelopes = decorations.filter(d => d.type?.toLowerCase() === 'candle' || d.type?.toLowerCase() === 'envelope').length
     const gifts = decorations.filter(d => d.type?.toLowerCase() === 'gift').length

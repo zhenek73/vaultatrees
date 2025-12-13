@@ -136,6 +136,25 @@ export async function getTopDonors(limit: number = 10): Promise<Array<{ from_acc
   }
 }
 
+export async function getLastProcessedTxId(): Promise<string | null> {
+  try {
+    const { data } = await supabase.from('parser_state').select('last_tx_id').eq('id', 1).single()
+    return data?.last_tx_id || null
+  } catch (error) {
+    console.error('❌ [DB] Error getting last processed tx_id:', error)
+    return null
+  }
+}
+
+export async function setLastProcessedTxId(txId: string): Promise<void> {
+  try {
+    await supabase.from('parser_state').upsert({ id: 1, last_tx_id: txId })
+    console.log(`✅ [DB] Updated last processed tx_id: ${txId.substring(0, 8)}...`)
+  } catch (error) {
+    console.error('❌ [DB] Error setting last processed tx_id:', error)
+  }
+}
+
 export { supabase }
 
 

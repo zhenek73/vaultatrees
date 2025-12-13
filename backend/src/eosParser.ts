@@ -1,7 +1,7 @@
 import axios from 'axios'
 import { config } from './config.js'
 import { EOSTransfer, Decoration, DecorationType } from './types.js'
-import { insertDecoration, broadcastDecoration } from './database.js'
+import { insertDecoration, broadcastDecoration, getLastProcessedTxId, setLastProcessedTxId } from './database.js'
 
 let lastProcessedBlock = 0
 let isPolling = false
@@ -235,22 +235,62 @@ export async function startParser(): Promise<void> {
 async function pollTransactions(): Promise<void> {
   try {
     console.log(`🔄 [EOS] Polling for new transactions...`)
+    
+    // Получаем последний обработанный tx_id из базы
+    const lastTxId = await getLastProcessedTxId()
+    if (lastTxId) {
+      console.log(`📌 [EOS] Last processed tx_id: ${lastTxId.substring(0, 8)}...`)
+    } else {
+      console.log(`📌 [EOS] No last processed tx_id found, starting fresh`)
+    }
+    
     const transfers = await fetchTransfers(100)
     
     if (transfers.length === 0) {
-      console.log(`📭 [EOS] No new transfers found`)
+      console.log(`📭 [EOS] No transfers found`)
       return
     }
 
-    console.log(`📥 [EOS] Found ${transfers.length} transfer(s), processing...`)
+    // Фильтруем только новые транзакции (после lastTxId)
+    let newTransfers: EOSTransfer[] = []
+    
+    if (lastTxId) {
+      // Если есть lastTxId - фильтруем только новые
+      newTransfers = transfers.filter(t => {
+        // Сравниваем по trx_id (лексикографически) - tx_id уникален и сортируется
+        return t.trx_id > lastTxId
+      })
+    } else {
+      // Если lastTxId нет - устанавливаем его на самую новую транзакцию без обработки
+      if (transfers.length > 0) {
+        const latestTxId = transfers[0].trx_id // transfers уже отсортированы по убыванию
+        await setLastProcessedTxId(latestTxId)
+        console.log(`📌 [EOS] Initialized last processed tx_id: ${latestTxId.substring(0, 8)}... (no processing, starting fresh)`)
+      }
+      return
+    }
+
+    if (newTransfers.length === 0) {
+      console.log(`📭 [EOS] No new transfers found (all already processed)`)
+      return
+    }
+
+    console.log(`📥 [EOS] Found ${newTransfers.length} new transfer(s) out of ${transfers.length} total, processing...`)
 
     // Обрабатываем в обратном порядке (старые сначала)
+    // Сохраняем самую новую tx_id до reverse (она будет первой в массиве)
+    const latestTxId = newTransfers[0].trx_id
+    
     let processed = 0
-    for (const transfer of transfers.reverse()) {
+    for (const transfer of newTransfers.reverse()) {
       await processTransfer(transfer)
       processed++
     }
-    console.log(`✅ [EOS] Processed ${processed} transfers`)
+    
+    // Обновляем lastProcessedTxId на самый новый
+    await setLastProcessedTxId(latestTxId)
+    
+    console.log(`✅ [EOS] Processed ${processed} new transfers`)
   } catch (error: any) {
     console.error('❌ [EOS] Error in pollTransactions:', error.message)
   }
