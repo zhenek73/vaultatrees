@@ -1,4 +1,4 @@
-export type DecorationType = 'light' | 'ball' | 'candle' | 'gift' | 'star'
+export type DecorationType = 'light' | 'ball' | 'candle' | 'envelope' | 'gift' | 'star'
 
 export interface Decoration {
   id?: number

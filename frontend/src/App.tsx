@@ -1,15 +1,17 @@
-import { useEffect, useState, useMemo, useRef } from 'react'
+import React, { useEffect, useState, useMemo, useRef, Suspense } from 'react'
 import { Sparkles, X } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
 import { fetchDecorations } from './api'
 import { Decoration } from './types'
+
+const Snowfall = React.lazy(() => import('./components/Snowfall'))
 
 interface Position {
   x: number
   y: number
 }
 
-type ModalType = 'light' | 'ball' | 'candle' | 'gift' | null
+type ModalType = 'light' | 'ball' | 'envelope' | 'gift' | 'star' | null
 
 // Список ярких цветов для огоньков
 const LIGHT_COLORS = [
@@ -48,8 +50,19 @@ export default function App() {
         created_at: new Date(Date.now() - i * 1000).toISOString(),
         tx_id: `test-ball-${i}`
       }))
-  
-      return [...testLights, ...testBalls]
+
+      const testEnvelopes = Array.from({ length: 18 }, (_, i): Decoration => ({
+        id: -2000 - i,
+        type: 'candle',
+        from_account: 'testuser',
+        username: `Отправитель #${i + 1}`,
+        text: `Текст открытки номер ${i + 1} с пожеланиями`,
+        amount: '100',
+        created_at: new Date(Date.now() - i * 1000).toISOString(),
+        tx_id: `test-envelope-${i}`
+      }))
+
+      return [...testLights, ...testBalls, ...testEnvelopes]
    
     return []  // пусто — реальные данные будут загружаться из бэкенда
   })
@@ -58,10 +71,13 @@ export default function App() {
   const [modalType, setModalType] = useState<ModalType>(null)
   const [waitingForPayment, setWaitingForPayment] = useState(false)
   const [countdown, setCountdown] = useState(6)
-  const [candleText, setCandleText] = useState('')
+  const [envelopeText, setenvelopeText] = useState('')
   const [giftUrl, setGiftUrl] = useState('')
   const [showDonatePanel, setShowDonatePanel] = useState(false)
   const [showLog, setShowLog] = useState(false)
+  const [timeLeft, setTimeLeft] = useState('')
+  const [bidAmount, setBidAmount] = useState('')
+  const [bidError, setBidError] = useState('')
 
   // Окно ожидания с таймером обратного отсчета
   useEffect(() => {
@@ -96,7 +112,7 @@ export default function App() {
     // loadData()
     
     // Подписка на realtime обновления через API (polling каждые 3 секунды)
-    const interval = setInterval(loadData, 300000)
+    const interval = setInterval(loadData, 3000)
     
    return () => clearInterval(interval)
    
@@ -119,11 +135,53 @@ export default function App() {
   const stats = useMemo(() => {
     const lights = decorations.filter(d => d.type?.toLowerCase() === 'light').length
     const balls = decorations.filter(d => d.type?.toLowerCase() === 'ball').length
-    const candles = decorations.filter(d => d.type?.toLowerCase() === 'candle').length
+    const envelopes = decorations.filter(d => d.type?.toLowerCase() === 'candle' || d.type?.toLowerCase() === 'envelope').length
     const gifts = decorations.filter(d => d.type?.toLowerCase() === 'gift').length
     const total = decorations.length
-    return { lights, balls, candles, gifts, total }
+    return { lights, balls, envelopes, gifts, total }
   }, [decorations])
+
+  // Расчёт лидирующей ставки на звезду
+  const starBids = useMemo(() => {
+    return decorations
+      .filter(d => d.type?.toLowerCase() === 'star')
+      .sort((a, b) => parseFloat(b.amount) - parseFloat(a.amount))
+  }, [decorations])
+
+  const currentBid = starBids.length > 0 ? parseFloat(starBids[0].amount) : 1000  // минимум 1001, но считаем от 1000
+  const minBid = currentBid + 1
+
+  // Обработчик изменения ставки
+  const handleBidChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value
+    setBidAmount(value)
+    if (value && parseFloat(value) <= currentBid) {
+      setBidError(`Сумма должна быть выше текущей ставки (${currentBid.toFixed(6)} MLNK)`)
+    } else {
+      setBidError('')
+    }
+  }
+
+  // Таймер обратного отсчёта до конца аукциона
+  useEffect(() => {
+    const auctionEnd = new Date('2025-12-29T23:59:59')
+    const updateTimer = () => {
+      const now = new Date()
+      const diff = auctionEnd.getTime() - now.getTime()
+      if (diff <= 0) {
+        setTimeLeft('Аукцион завершён')
+        return
+      }
+      const days = Math.floor(diff / (1000 * 60 * 60 * 24))
+      const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60))
+      const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60))
+      const seconds = Math.floor((diff % (1000 * 60)) / 1000)
+      setTimeLeft(`${days}д ${hours}ч ${minutes}м ${seconds}с`)
+    }
+    updateTimer() // Вызываем сразу для немедленного отображения
+    const timer = setInterval(updateTimer, 1000)
+    return () => clearInterval(timer)
+  }, [])
 
   // Позиции лампочек из JSON файла
   const [lightPositions, setLightPositions] = useState<Position[]>([])
@@ -174,6 +232,15 @@ export default function App() {
       .catch(() => setBallPositions([]))
   }, [])
 
+  // Загрузка позиций открыток (конвертов)
+  const [envelopePositions, setEnvelopePositions] = useState<Position[]>([])
+
+  useEffect(() => {
+    fetch('/envelope-positions.json')
+      .then(res => res.json())
+      .then(data => setEnvelopePositions(data))
+      .catch(() => setEnvelopePositions([]))
+  }, [])
 
   // Вычисление реальных размеров и позиции изображения на экране
   // Вычисление реальных видимых границ картинки при object-fit: contain
@@ -281,17 +348,24 @@ useEffect(() => {
           amount: 10.000000,
           memo: ""
         })
-      case 'candle':
+      case 'envelope':
         return JSON.stringify({
           ...baseData,
           amount: 100.000000,
-          memo: candleText.trim().substring(0, 200) || ""
+          memo: envelopeText.trim().substring(0, 200) || ""
         })
       case 'gift':
         return JSON.stringify({
           ...baseData,
           amount: 1000.000000,
           memo: giftUrl.trim() || ""
+        })
+      case 'star':
+        const amount = parseFloat(bidAmount) || minBid
+        return JSON.stringify({
+          ...baseData,
+          amount: amount.toFixed(6),
+          memo: "звезда"
         })
       default:
         return ''
@@ -302,8 +376,12 @@ useEffect(() => {
     setModalType(type)
     setWaitingForPayment(false)
     setShowDonatePanel(false)
-    if (type === 'candle') setCandleText('')
+    if (type === 'envelope') setenvelopeText('')
     if (type === 'gift') setGiftUrl('')
+    if (type === 'star') {
+      setBidAmount('')
+      setBidError('')
+    }
   }
 
   const handlePaymentDone = () => {
@@ -327,6 +405,11 @@ useEffect(() => {
 
   return (
     <div className="fixed inset-0 flex items-center justify-center bg-black overflow-hidden">
+      {/* Снег — на весь экран, вне контейнера ёлки, не перерендеривается */}
+      <Suspense fallback={null}>
+        <Snowfall />
+      </Suspense>
+
       <div 
         className="relative w-full max-w-lg mx-auto flex items-center justify-center"
         style={{ 
@@ -359,19 +442,29 @@ useEffect(() => {
 
             return (
               <div
-                key={`light-${i}`}
-                className="absolute rounded-full animate-pulse"
-                style={{
-                  left: `${screenX}px`,
-                  top: `${screenY}px`,
-                  width: imageBounds ? `${imageBounds.width * 0.012}px` : '12px',   // ~6px на 512px ширине ёлки
-                  height: imageBounds ? `${imageBounds.width * 0.012}px` : '12px',
-                  backgroundColor: color,
-                  transform: 'translate(-50%, -50%)',
-                  boxShadow: `0 0 ${imageBounds ? imageBounds.width * 0.023 : 12}px ${color}, 0 0 ${imageBounds ? imageBounds.width * 0.039 : 20}px ${color}`,
-                  animationDelay: `${delay}s`,
-                }}
-              />
+  key={`light-${i}`}
+  className="absolute animate-pulse"
+  style={{
+    left: `${screenX}px`,
+    top: `${screenY}px`,
+    width: imageBounds ? `${imageBounds.width * 0.014}px` : '14px',
+    height: imageBounds ? `${imageBounds.width * 0.014}px` : '14px',
+    backgroundColor: color,
+    borderRadius: '50%',
+    transform: 'translate(-50%, -50%)',
+    boxShadow: `
+      0 0 ${imageBounds ? imageBounds.width * 0.02 : 10}px ${color},
+      0 0 ${imageBounds ? imageBounds.width * 0.04 : 20}px ${color},
+      0 0 ${imageBounds ? imageBounds.width * 0.07 : 35}px ${color}80,
+      0 0 ${imageBounds ? imageBounds.width * 0.12 : 60}px ${color}40,
+      0 0 ${imageBounds ? imageBounds.width * 0.18 : 90}px ${color}20
+    `,
+    filter: 'blur(1px)',
+    opacity: 0.9,
+    animation: `pulse ${0.8 + Math.random() * 0.8}s ease-in-out infinite`,  // ← здесь скорость!
+    animationDelay: `${delay}s`,
+  }}
+/>
             )
           })
         )}
@@ -400,7 +493,7 @@ useEffect(() => {
             return (
               <div
                 key={`ball-${ball?.id || i}`}
-                className="group absolute -translate-x-1/2 -translate-y-1/2 pointer-events-auto"
+                className="group absolute -translate-x-1/2 -translate-y-1/2 pointer-events-auto hover:animate-wiggle"
                 style={{
                   left: `${screenX}px`,
                   top: `${screenY}px`,
@@ -426,38 +519,51 @@ useEffect(() => {
         )}
       </div>
       
-      {/* Свечи с текстом */}
-      {decorations
-        .filter(d => d.type?.toLowerCase() === 'candle')
-        .map((dec, i) => {
-          const pos = decorationPositions.get(dec.id || i)
-          if (!pos) return null
-          return (
-            <div
-              key={`candle-${dec.id || i}`}
-              className="absolute group"
-              style={{
-                left: `${(pos.x / 320) * 100}%`,
-                top: `${(pos.y / 400) * 100}%`,
-                transform: 'translate(-50%, -50%)',
-                zIndex: 20
-              }}
-            >
-              {/* Свеча */}
-              <svg width="8" height="12" className="mb-1">
-                <rect x="2" y="0" width="4" height="10" fill="#fff" opacity="0.9"/>
-                <circle cx="4" cy="0" r="2" fill="#ffaa00" className="animate-pulse"/>
-              </svg>
-              {/* Tooltip с именем и текстом - золотая табличка */}
-              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
-                <div className="bg-yellow-400 text-black text-xs font-bold px-2 py-1 rounded shadow-lg border border-yellow-600 max-w-[150px] text-center">
-                  <div>{dec.username || dec.from_account}</div>
-                  {dec.text && <div className="text-xs mt-1">{dec.text}</div>}
+      {/* Открытки (конверты) — фиксированные позиции через imageBounds */}
+      <div className="absolute inset-0 pointer-events-none z-20">
+        {stats.envelopes > 0 && imageBounds && envelopePositions.length > 0 && (
+          Array.from({ length: stats.envelopes }, (_, i) => {
+            const pos = envelopePositions[i % envelopePositions.length]
+            const envelope = decorations.filter(d => d.type?.toLowerCase() === 'candle' || d.type?.toLowerCase() === 'envelope')[i]
+
+            const relX = pos.x / 1024
+            const relY = pos.y / 2048
+
+            const screenX = imageBounds.left + relX * imageBounds.width
+            const screenY = imageBounds.top + relY * imageBounds.height
+
+            return (
+              <div
+                key={`envelope-${envelope?.id || i}`}
+                className="group absolute -translate-x-1/2 -translate-y-1/2 pointer-events-auto hover:animate-wiggle"
+                style={{
+                  left: `${screenX}px`,
+                  top: `${screenY}px`,
+                }}
+              >
+                <img
+                  src="/envelope.png"
+                  alt="Открытка"
+                  style={{
+                    width: imageBounds ? `${imageBounds.width * 0.045}px` : '48px',
+                    height: 'auto',
+                    filter: 'drop-shadow(0 4px 8px rgba(0,0,0,0.5))'
+                  }}
+                />
+                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
+                  <div className="bg-yellow-400 text-black text-xs font-bold px-3 py-2 rounded-lg shadow-lg border border-yellow-600 max-w-[200px]">
+                    <div className="font-semibold">{envelope?.username || 'Аноним'}</div>
+                    {envelope?.text && (
+                      <div className="text-xs mt-1 leading-tight">{envelope.text}</div>
+                    )}
+                  </div>
+                  <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-1 w-0 h-0 border-l-8 border-r-8 border-t-8 border-transparent border-t-yellow-400"></div>
                 </div>
               </div>
-            </div>
-          )
-        })}
+            )
+          })
+        )}
+      </div>
       
       {/* Гифки - полноразмерные */}
       {decorations
@@ -483,24 +589,69 @@ useEffect(() => {
           )
         })}
       
-      {/* Звезда - прозрачная по умолчанию */}
+      {/* Сияющая пятиконечная звезда на макушке — основной вариант (CSS + SVG) */}
       <div 
-        className="absolute top-0 left-1/2 -translate-x-1/2"
+        className="absolute top-0 left-1/2 -translate-x-1/2 pointer-events-none z-25"
         style={{
           opacity: decorations.some(d => d.type?.toLowerCase() === 'star') ? 1 : 0,
-          transition: 'opacity 0.5s',
-          zIndex: 25
+          transition: 'opacity 1s ease-in-out',
         }}
       >
-        <div className="text-4xl">⭐</div>
-        {decorations.some(d => d.type?.toLowerCase() === 'star') && (
-          <div className="absolute inset-0 animate-blink" style={{
-            filter: 'drop-shadow(0 0 20px rgba(255, 215, 0, 1))',
-            color: '#ffd700'
-          }}>
-            ⭐
+        {/* Основной вариант: CSS-звезда с градиентом, пульсацией и лучами */}
+        <div 
+          className="relative animate-pulse-slow"
+          style={{
+            width: imageBounds ? `${imageBounds.width * 0.12}px` : '60px',  // подгони 0.10–0.15
+            height: imageBounds ? `${imageBounds.width * 0.12}px` : '60px',
+          }}
+        >
+          <div className="absolute inset-0 bg-gradient-to-br from-yellow-300 via-yellow-500 to-amber-600 rounded-full blur-md animate-glow"></div>
+          <div className="absolute inset-0 flex items-center justify-center">
+            <svg viewBox="0 0 100 100" className="w-full h-full drop-shadow-2xl">
+              <path 
+                d="M50 0 L61 35 L98 35 L67 57 L76 90 L50 70 L24 90 L33 57 L2 35 L39 35 Z" 
+                fill="#FFD700" 
+                stroke="#FFAA00" 
+                strokeWidth="2"
+              />
+            </svg>
           </div>
-        )}
+          <div className="absolute inset-0 animate-spin-slow opacity-70">
+            <div className="absolute top-0 left-1/2 -translate-x-1/2 w-1 h-12 bg-yellow-400 blur-sm"></div>
+            <div className="absolute top-1/2 left-0 -translate-y-1/2 w-12 h-1 bg-yellow-400 blur-sm"></div>
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rotate-45 w-12 h-1 bg-yellow-400 blur-sm"></div>
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 -rotate-45 w-12 h-1 bg-yellow-400 blur-sm"></div>
+          </div>
+        </div>
+
+        {/* Альтернатива 1: простая emoji-звезда (закомментируй основной блок выше, если хочешь сравнить) */}
+        {/*
+        <div className="text-6xl drop-shadow-2xl animate-pulse">
+          ⭐
+          <div className="absolute inset-0 text-6xl animate-ping opacity-75">✨</div>
+        </div>
+        */}
+
+        {/* Альтернатива 2: чистый SVG без лучей и анимаций (минималистично) */}
+        {/*
+        <svg 
+          viewBox="0 0 100 100" 
+          style={{ width: imageBounds ? `${imageBounds.width * 0.12}px` : '60px' }}
+          className="drop-shadow-2xl"
+        >
+          <path d="M50 0 L61 35 L98 35 L67 57 L76 90 L50 70 L24 90 L33 57 L2 35 L39 35 Z" fill="#FFD700" stroke="#FFAA00" strokeWidth="2"/>
+        </svg>
+        */}
+
+        {/* Альтернатива 3: GIF (положи файл public/star.gif и раскомментируй) */}
+        {/*
+        <img 
+          src="/star.gif" 
+          alt="Star" 
+          style={{ width: imageBounds ? `${imageBounds.width * 0.12}px` : '60px' }}
+          className="drop-shadow-2xl"
+        />
+        */}
       </div>
 
       {/* Кнопка "Украсить ёлку" внизу (поднята выше) */}
@@ -530,17 +681,17 @@ useEffect(() => {
             </button>
             
             <button 
-              onClick={() => handleOpenModal('candle')}
+              onClick={() => handleOpenModal('envelope')}
               className="w-full bg-gradient-to-r from-yellow-600 to-orange-600 text-white font-bold py-3 px-6 rounded-full text-lg shadow-xl hover:scale-105 transition"
             >
-              🕯️ Свеча (100 MLNK)
+              📮 Открытка (100 MLNK)
             </button>
             
             <button 
-              onClick={() => handleOpenModal('gift')}
-              className="w-full bg-gradient-to-r from-green-600 to-emerald-600 text-white font-bold py-3 px-6 rounded-full text-lg shadow-xl hover:scale-105 transition"
+              onClick={() => handleOpenModal('star')}
+              className="w-full bg-gradient-to-r from-yellow-500 via-amber-500 to-yellow-600 text-white font-bold py-3 px-6 rounded-full text-lg shadow-xl hover:scale-105 transition animate-pulse-slow"
             >
-              🎁 Подарок (1000 MLNK)
+              ⭐ Зажечь звезду (≥1001 MLNK)
             </button>
 
             {/* Кнопка открытия лога */}
@@ -592,8 +743,61 @@ useEffect(() => {
         </div>
       )}
 
+      {/* Специальная модалка для аукциона звезды */}
+      {modalType === 'star' && (
+        <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-50 p-4">
+          <div className="bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 rounded-3xl p-8 max-w-md w-full relative border-4 border-yellow-500/70 shadow-2xl">
+            <button onClick={handleCloseModal} className="absolute top-4 right-4 text-white/70 hover:text-white">
+              <X className="w-6 h-6" />
+            </button>
+
+            <h2 className="text-3xl font-bold text-yellow-400 mb-4 text-center animate-pulse">
+              ⭐ Аукцион звезды ⭐
+            </h2>
+
+            <div className="text-center space-y-4 text-white">
+              <p className="text-lg">Текущая ставка: <span className="text-yellow-400 font-bold">{currentBid.toFixed(6)} MLNK</span></p>
+              <p className="text-pink-300 text-sm">Ваша ставка должна быть выше</p>
+              <p className="text-2xl font-bold text-yellow-300">{timeLeft}</p>
+              <p className="text-sm text-gray-300">С победителем свяжемся через PayCash</p>
+              <p className="text-pink-400 text-xs">Проигравшие ставки не возвращаются</p>
+            </div>
+
+            <div className="my-6">
+              <input
+                type="number"
+                step="0.000001"
+                value={bidAmount}
+                onChange={handleBidChange}
+                placeholder={`Минимум ${minBid.toFixed(6)} MLNK`}
+                className="w-full bg-black/30 border border-yellow-500/50 rounded-lg px-4 py-3 text-white text-center text-xl focus:outline-none focus:border-yellow-400"
+              />
+              {bidError && <p className="text-red-400 text-sm mt-2 text-center">{bidError}</p>}
+            </div>
+
+            <div className="flex justify-center my-8">
+              <QRCodeSVG value={getQRCodeData('star')} size={256} level="H" includeMargin fgColor="#000" className="rounded-2xl shadow-2xl" />
+            </div>
+
+            <div className="bg-black/40 rounded-lg p-4 space-y-2 text-sm">
+              <div className="flex justify-between"><span className="text-gray-400">Кому:</span><span className="text-white font-mono">malinkatrees</span></div>
+              <div className="flex justify-between"><span className="text-gray-400">Ваша ставка:</span><span className="text-yellow-400 font-bold">{bidAmount ? parseFloat(bidAmount).toFixed(6) : minBid.toFixed(6)} MLNK</span></div>
+              <div className="flex justify-between"><span className="text-gray-400">Memo:</span><span className="text-yellow-300">звезда</span></div>
+            </div>
+
+            <button 
+              onClick={handlePaymentDone} 
+              disabled={!bidAmount || parseFloat(bidAmount) <= currentBid}
+              className={`mt-6 w-full text-white font-bold py-4 rounded-full text-lg shadow-2xl transition ${!bidAmount || parseFloat(bidAmount) <= currentBid ? 'bg-gray-600 cursor-not-allowed' : 'bg-gradient-to-r from-yellow-500 to-amber-600 hover:scale-105 animate-pulse'}`}
+            >
+              {!bidAmount || parseFloat(bidAmount) <= currentBid ? 'Введите сумму выше' : '✅ Сделать ставку!'}
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Модалка с QR-кодом */}
-      {modalType && (
+      {modalType && modalType !== 'star' && (
         <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-50 p-4">
           <div className="bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 rounded-3xl p-8 max-w-md w-full relative border-2 border-yellow-500/30 shadow-2xl">
             <button
@@ -606,28 +810,28 @@ useEffect(() => {
             <h2 className="text-2xl font-bold text-white mb-2 text-center">
               {modalType === 'light' && '💡 Зажечь огонёк'}
               {modalType === 'ball' && '🎈 Повесить шарик'}
-              {modalType === 'candle' && '🕯️ Поставить свечу'}
+              {modalType === 'envelope' && '📮 Послать открытку'}
               {modalType === 'gift' && '🎁 Подарить гифку'}
             </h2>
             
             <p className="text-pink-300 text-center mb-6">
               {modalType === 'light' && '1.000000 MLNK'}
               {modalType === 'ball' && '10.000000 MLNK'}
-              {modalType === 'candle' && '100.000000 MLNK'}
+              {modalType === 'envelope' && '100.000000 MLNK'}
               {modalType === 'gift' && '1000.000000 MLNK'}
             </p>
 
-            {modalType === 'candle' && (
+            {modalType === 'envelope' && (
               <div className="mb-4">
                 <input
                   type="text"
-                  value={candleText}
-                  onChange={(e) => setCandleText(e.target.value)}
-                  placeholder="Введите пожелание (до 200 символов)"
+                  value={envelopeText}
+                  onChange={(e) => setenvelopeText(e.target.value)}
+                  placeholder="Введите текст открытки (до 200 символов)"
                   maxLength={200}
                   className="w-full bg-black/30 border border-pink-500/50 rounded-lg px-4 py-2 text-white placeholder-gray-400 focus:outline-none focus:border-pink-500"
                 />
-                <p className="text-xs text-gray-400 mt-1">{candleText.length}/200</p>
+                <p className="text-xs text-gray-400 mt-1">{envelopeText.length}/200</p>
               </div>
             )}
 
@@ -659,7 +863,7 @@ useEffect(() => {
             </div>
 
             <p className="text-center text-yellow-300 mb-4 text-sm">
-              Сканируй в PayCash / Anchor
+              Сканируй в PayCash 
             </p>
 
             <div className="bg-black/40 rounded-lg p-4 mb-6 space-y-2 text-sm">
@@ -672,7 +876,7 @@ useEffect(() => {
                 <span className="text-pink-300 font-bold">
                   {modalType === 'light' && '1.000000 MLNK'}
                   {modalType === 'ball' && '10.000000 MLNK'}
-                  {modalType === 'candle' && '100.000000 MLNK'}
+                  {modalType === 'envelope' && '100.000000 MLNK'}
                   {modalType === 'gift' && '1000.000000 MLNK'}
                 </span>
               </div>
@@ -681,7 +885,7 @@ useEffect(() => {
                 <span className="text-yellow-300 font-mono text-xs break-all text-right">
                   {modalType === 'light' && '(пусто)'}
                   {modalType === 'ball' && '(пусто)'}
-                  {modalType === 'candle' && (candleText.trim() ? candleText.trim().substring(0, 50) + (candleText.length > 50 ? '...' : '') : '(пусто)')}
+                  {modalType === 'envelope' && (envelopeText.trim() ? envelopeText.trim().substring(0, 50) + (envelopeText.length > 50 ? '...' : '') : '(пусто)')}
                   {modalType === 'gift' && (giftUrl.trim() ? giftUrl.trim().substring(0, 30) + (giftUrl.length > 30 ? '...' : '') : '(пусто)')}
                 </span>
               </div>
@@ -723,7 +927,7 @@ useEffect(() => {
                       <div className="text-yellow-400 font-bold">
                         {dec.type === 'light' && '💡 Огонёк'}
                         {dec.type === 'ball' && '🎈 Шарик'}
-                        {dec.type === 'candle' && '🕯️ Свеча'}
+                        {(dec.type === 'candle' || dec.type === 'envelope') && '📮 Открытка'}
                         {dec.type === 'gift' && '🎁 Подарок'}
                       </div>
                       <div className="text-white mt-1">
@@ -758,7 +962,7 @@ useEffect(() => {
       {!loading && (
         <div className="absolute top-4 left-4 right-4 z-30 bg-black/60 backdrop-blur-sm rounded-lg p-3 text-center">
           <p className="text-pink-300 text-sm">
-            Огоньков: {stats.lights} • Шариков: {stats.balls} • Свечей: {stats.candles} • Подарков: {stats.gifts}
+            Огоньков: {stats.lights} • Шариков: {stats.balls} • Открыток: {stats.envelopes} 
           </p>
           <p className="text-pink-200 text-xs mt-1">Всего: {stats.total} украшений</p>
         </div>

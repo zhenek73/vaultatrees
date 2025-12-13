@@ -22,6 +22,10 @@
   animation: blink 1s ease-in-out infinite;
   /* box-shadow применяется inline для использования динамических цветов */
 }
+@keyframes animate-pulse {
+  0%, 100% { opacity: 0.6; transform: translate(-50%, -50%) scale(0.9); }
+  50% { opacity: 1; transform: translate(-50%, -50%) scale(1.2); }
+}
 
 @keyframes gift-appear {
   0% { 
@@ -103,4 +107,27 @@ body {
   max-width: 512px;
   margin: 0 auto;
   min-height: 100vh;
+}
+
+@keyframes wiggle {
+  0%, 100% { transform: rotate(0deg); }
+  25% { transform: rotate(-3deg) translateX(-2px); }
+  75% { transform: rotate(3deg) translateX(2px); }
+}
+
+.animate-wiggle {
+  animation: wiggle 0.3s ease-in-out;
+}
+
+@keyframes fall {
+  0% {
+    transform: translateY(-10vh) translateX(0) rotate(0deg);
+  }
+  100% {
+    transform: translateY(110vh) translateX(50px) rotate(360deg);
+  }
+}
+
+.animate-fall {
+  animation: fall linear infinite;
 }

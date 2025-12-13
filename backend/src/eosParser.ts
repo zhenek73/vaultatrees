@@ -93,12 +93,30 @@ function parseTransfer(transfer: EOSTransfer): { type: DecorationType | null; co
   
   const amount = parseFloat(amountMatch[1])
   const memo = transfer.memo?.trim() || ''
-  const lowerMemo = memo.toLowerCase()
+  const memoLower = memo.toLowerCase()
   
-  // ≥1001 MLNK + memo содержит "star" → аукцион звезды (пока не реализован, пропускаем)
-  if (amount >= 1001 && lowerMemo.includes('star')) {
-    console.log(`⭐ [EOS] Star auction detected (not implemented yet): ${amount} MLNK`)
-    return { type: null }
+  // Приоритет: если memo = "звезда" или "star" (case-insensitive) → создавать запись type 'star'
+  if (memoLower === 'звезда' || memoLower === 'star') {
+    return { 
+      type: 'star',
+      username: transfer.from
+    }
+  }
+  
+  // Ровно 10 MLNK → шарик с именем отправителя
+  if (amount === 10) {
+    return { 
+      type: 'ball', 
+      username: transfer.from 
+    }
+  }
+  
+  // Ровно 100 MLNK → открытка с текстом из memo
+  if (amount === 100) {
+    return { 
+      type: 'candle', 
+      text: memo ? memo.substring(0, 200) : undefined 
+    }
   }
   
   // Ровно 1000 MLNK → кастомный подарок (гифка по ссылке из memo)
@@ -123,30 +141,12 @@ function parseTransfer(transfer: EOSTransfer): { type: DecorationType | null; co
     return { type: 'gift', imageUrl: memo || undefined }
   }
   
-    // Ровно 100 MLNK → свеча с текстом из memo
-  if (amount === 100) {
+  // Любая другая сумма (не 10, не 100, не 1000) → количество огоньков = floor(amount)
+  const lightCount = Math.floor(amount)
+  if (lightCount > 0) {
     return { 
-      type: 'candle', 
-      text: memo ? memo.substring(0, 200) : undefined 
-    }
-  }
-  
-  // Ровно 10 MLNK → шарик с именем отправителя
-  if (amount === 10) {
-    return { 
-      type: 'ball', 
-      username: transfer.from 
-    }
-  }
-  
-  // 1–9.999999 MLNK → количество огоньков = floor(amount)
-  if (amount >= 1 && amount < 10) {
-    const lightCount = Math.floor(amount)
-    if (lightCount > 0) {
-      return { 
-        type: 'light', 
-        count: lightCount 
-      }
+      type: 'light', 
+      count: lightCount 
     }
   }
   
@@ -163,6 +163,26 @@ async function processTransfer(transfer: EOSTransfer): Promise<void> {
   }
   
   console.log(`✅ [EOS] Parsed transfer as type: ${parsed.type} (amount: ${transfer.quantity})`)
+
+  // Для звезды создаём одну запись с полной суммой
+  if (parsed.type === 'star') {
+    const decoration: Decoration = {
+      type: 'star',
+      from_account: transfer.from,
+      username: parsed.username || transfer.from,
+      amount: transfer.quantity,
+      tx_id: transfer.trx_id,
+      created_at: transfer.block_time
+    }
+
+    const inserted = await insertDecoration(decoration)
+    
+    if (inserted) {
+      await broadcastDecoration(inserted)
+      console.log(`⭐ [EOS] Created star decoration from transfer`)
+    }
+    return  // Завершаем функцию после создания звезды, чтобы не создавать лишние записи
+  }
 
   // Для огоньков создаём несколько записей (по количеству)
   const count = parsed.type === 'light' ? (parsed.count || 1) : 1
