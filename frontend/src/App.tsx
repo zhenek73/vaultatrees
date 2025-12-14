@@ -83,6 +83,7 @@ export default function App() {
     return saved ? Number(saved) : 0
   })
   const [showSalute, setShowSalute] = useState(false)
+  const [auctionEnded, setAuctionEnded] = useState(false)
 
   // Сохранение burstCount в sessionStorage
   useEffect(() => {
@@ -215,6 +216,7 @@ export default function App() {
       const diff = auctionEnd.getTime() - now.getTime()
       if (diff <= 0) {
         setTimeLeft('Аукцион завершён')
+        setAuctionEnded(true)
         return
       }
       const days = Math.floor(diff / (1000 * 60 * 60 * 24))
@@ -634,20 +636,20 @@ useEffect(() => {
           )
         })}
       
-      {/* Сияющая пятиконечная звезда на макушке — закомментировано до окончания аукциона */}
-      {/*
+      {/* Сияющая пятиконечная звезда на макушке */}
       <div 
-        className="absolute top-0 left-1/2 -translate-x-1/2 pointer-events-none z-25"
+        className="group absolute top-[238px] left-1/2 z-25"
         style={{
-          opacity: decorations.some(d => d.type?.toLowerCase() === 'star') ? 1 : 0,
+          transform: 'translateX(calc(-50% - 2px))',
+          opacity: auctionEnded ? 1 : 0,
           transition: 'opacity 1s ease-in-out',
         }}
       >
         <div 
           className="relative animate-pulse-slow"
           style={{
-            width: imageBounds ? `${imageBounds.width * 0.12}px` : '60px',
-            height: imageBounds ? `${imageBounds.width * 0.12}px` : '60px',
+            width: imageBounds ? `${imageBounds.width * 0.15}px` : '75px',
+            height: imageBounds ? `${imageBounds.width * 0.15}px` : '75px',
           }}
         >
           <div className="absolute inset-0 bg-gradient-to-br from-yellow-300 via-yellow-500 to-amber-600 rounded-full blur-md animate-glow"></div>
@@ -668,8 +670,13 @@ useEffect(() => {
             <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 -rotate-45 w-12 h-1 bg-yellow-400 blur-sm"></div>
           </div>
         </div>
+        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-4 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
+          <div className="bg-yellow-400 text-black text-sm font-bold px-4 py-2 rounded-lg shadow-lg whitespace-nowrap">
+            Звезду зажёг {starBids.length > 0 ? starBids[0].username || starBids[0].from_account : 'победитель'}! С Новым годом, друзья!
+          </div>
+          <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-1 w-0 h-0 border-l-8 border-r-8 border-t-8 border-transparent border-t-yellow-400"></div>
+        </div>
       </div>
-      */}
 
       {/* Кнопка "Украсить ёлку" внизу (поднята выше) */}
       <div className="absolute left-1/2 -translate-x-1/2 z-40 w-full px-4" style={{ bottom: 'max(16px, env(safe-area-inset-bottom, var(--tg-content-safe-area-inset-bottom, 20px)))' }}>
@@ -692,21 +699,28 @@ useEffect(() => {
             
             <button 
               onClick={() => handleOpenModal('ball')}
-              className="w-full bg-gradient-to-r from-blue-600 to-cyan-600 text-white font-bold py-3 px-6 rounded-full text-lg shadow-xl hover:scale-105 transition"
+              className="w-full bg-gradient-to-r from-blue-600 to-cyan-600 text-white font-bold py-3 px-6 rounded-full text-lg shadow-xl hover:scale-105 transition flex items-center justify-center gap-2"
             >
-              🎈 Шарик (10 MLNK)
+              <img src="/malinka-ball.svg" className="w-8 h-8" alt="Шарик" />
+              Шарик (10 MLNK)
             </button>
             
             <button 
               onClick={() => handleOpenModal('envelope')}
-              className="w-full bg-gradient-to-r from-yellow-600 to-orange-600 text-white font-bold py-3 px-6 rounded-full text-lg shadow-xl hover:scale-105 transition"
+              className="w-full bg-gradient-to-r from-yellow-600 to-orange-600 text-white font-bold py-3 px-6 rounded-full text-lg shadow-xl hover:scale-105 transition flex items-center justify-center gap-2"
             >
-              📮 Открытка (100 MLNK)
+              <img src="/envelope.png" className="w-8 h-8" alt="Открытка" />
+              Открытка (100 MLNK)
             </button>
             
             <button 
               onClick={() => handleOpenModal('star')}
-              className="w-full bg-gradient-to-r from-yellow-500 via-amber-500 to-yellow-600 text-white font-bold py-3 px-6 rounded-full text-lg shadow-xl hover:scale-105 transition animate-pulse-slow"
+              disabled={auctionEnded}
+              className={`w-full text-white font-bold py-3 px-6 rounded-full text-lg shadow-xl transition ${
+                auctionEnded 
+                  ? 'bg-gray-600 cursor-not-allowed opacity-50' 
+                  : 'bg-gradient-to-r from-yellow-500 via-amber-500 to-yellow-600 hover:scale-105 animate-pulse-slow'
+              }`}
             >
               ⭐ Зажечь звезду (∞ MLNK)
             </button>
