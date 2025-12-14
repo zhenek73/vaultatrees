@@ -78,6 +78,37 @@ export default function App() {
   const [timeLeft, setTimeLeft] = useState('')
   const [bidAmount, setBidAmount] = useState('')
   const [bidError, setBidError] = useState('')
+  const [burstCount, setBurstCount] = useState(() => {
+    const saved = sessionStorage.getItem('burstCount')
+    return saved ? Number(saved) : 0
+  })
+  const [showSalute, setShowSalute] = useState(false)
+
+  // Сохранение burstCount в sessionStorage
+  useEffect(() => {
+    sessionStorage.setItem('burstCount', burstCount.toString())
+  }, [burstCount])
+
+  // Обработка лопания снежинки
+  const handleBurst = () => {
+    const newCount = burstCount + 1
+    setBurstCount(newCount)
+    
+    // Салют каждые 5 лопнувших снежинок
+    if (newCount % 5 === 0) {
+      // Салют - GIF + звук
+      setShowSalute(true)
+      try {
+        new Audio('/firework.mp3').play().catch(() => console.log('firework'))
+      } catch {
+        console.log('firework')
+      }
+      setTimeout(() => {
+        setShowSalute(false)
+        setBurstCount(0)
+      }, 3000)
+    }
+  }
 
   // Окно ожидания с таймером обратного отсчета
   useEffect(() => {
@@ -421,7 +452,7 @@ useEffect(() => {
     <div className="fixed inset-0 flex items-center justify-center bg-black overflow-hidden">
       {/* Снег — на весь экран, вне контейнера ёлки, не перерендеривается */}
       <Suspense fallback={null}>
-        <Snowfall />
+        <Snowfall onBurst={handleBurst} />
       </Suspense>
 
       <div 
@@ -941,7 +972,21 @@ useEffect(() => {
           <p className="text-pink-300 text-sm">
             Огоньков: {stats.lights} • Шариков: {stats.balls} • Открыток: {stats.envelopes} 
           </p>
-          <p className="text-pink-200 text-xs mt-1">Всего: {stats.total} украшений</p>
+          <p className="text-pink-200 text-xs mt-1">Всего: {stats.lights+stats.balls+stats.envelopes+stats.gifts} украшений</p>
+        </div>
+      )}
+
+      {/* Салют - GIF */}
+      {showSalute && (
+        
+        <div className="fixed inset-x-0 top-0 flex items-start justify-center pointer-events-none z-50 pt-8">
+        
+          <img
+            src="/iskra.gif"
+            alt="Салют"
+            className="w-128 h-128 object-contain"
+            style={{ animation: 'none' }}
+          />
         </div>
       )}
       </div>
