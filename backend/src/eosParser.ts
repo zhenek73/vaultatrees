@@ -155,6 +155,14 @@ function parseTransfer(transfer: EOSTransfer): { type: DecorationType | null; co
 
 async function processTransfer(transfer: EOSTransfer): Promise<void> {
   console.log(`🔄 [EOS] Processing transfer: ${transfer.trx_id.substring(0, 8)}... from ${transfer.from}, amount: ${transfer.quantity}, memo: "${transfer.memo}"`)
+  
+  // === ФИЛЬТР ТЕСТОВЫХ ПЕРЕВОДОВ ОТ CRYPTOZHENEK ===
+  if (transfer.from === 'cryptozhenek') {
+    console.log(`[EOS] Skipping test transfer from cryptozhenek (tx: ${transfer.trx_id.substring(0, 8)}...)`)
+    return  // полностью прекращаем обработку этой транзакции
+  }
+  // === КОНЕЦ ФИЛЬТРА ===
+  
   const parsed = parseTransfer(transfer)
 
   if (!parsed.type) {
