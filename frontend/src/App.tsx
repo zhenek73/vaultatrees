@@ -153,7 +153,7 @@ export default function App() {
       
       channel = supabase.channel('public:decorations', {
         config: {
-          private: true  // ключевой фикс: делаем канал private для приёма broadcast от service_role
+          private: true  // фикс: канал private, чтобы принимать broadcast от service_role
         }
       })
         .on('broadcast', { event: 'new_decoration' }, (payload) => {
@@ -181,13 +181,13 @@ export default function App() {
           })
         })
         .subscribe((status) => {
-          console.log('📡 [Realtime] Subscription status:', status)
+          console.log('[Realtime] Subscription status:', status)
           if (status === 'SUBSCRIBED') {
             console.log('✅ [Realtime] Subscribed to private channel')
           } else if (status === 'CLOSED') {
-            console.log('⚠️ [Realtime] Channel closed')
+            console.log('[Realtime] Channel closed')
           } else if (status === 'CHANNEL_ERROR') {
-            console.error('❌ [Realtime] Channel error')
+            console.error('[Realtime] Channel error')
           }
         })
     }
