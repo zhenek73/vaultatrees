@@ -31,14 +31,14 @@ export async function insertDecoration(decoration: Decoration): Promise<Decorati
       .single()
 
     if (error) {
-      console.error('❌ Error inserting decoration:', error)
+      console.error('❌ Error inserting decoration: ' + JSON.stringify(error))
       return null
     }
 
     console.log(`✅ Decoration inserted: ${decoration.type} from ${decoration.from_account}`)
     return data
   } catch (error) {
-    console.error('❌ Database error:', error)
+    console.error('❌ Database error: ' + String(error))
     return null
   }
 }
@@ -57,13 +57,13 @@ export async function getDecorations(limit: number = 1000): Promise<Decoration[]
       .limit(limit)
 
     if (error) {
-      console.error('❌ [DB] Error fetching decorations:', error)
+      console.error('❌ [DB] Error fetching decorations: ' + JSON.stringify(error))
       return []
     }
     console.log(`✅ [DB] Fetched ${data?.length || 0} decorations`)
     return data || []
   } catch (error) {
-    console.error('❌ Database error:', error)
+    console.error('❌ Database error: ' + String(error))
     return []
   }
 }
@@ -78,12 +78,12 @@ export async function broadcastDecoration(decoration: Decoration): Promise<void>
     })
 
     if (result !== 'ok') {
-      console.error('❌ Error broadcasting decoration:', result)
+      console.error('❌ Error broadcasting decoration: ' + String(result))
     } else {
       console.log(`📡 Broadcasted decoration: ${decoration.type}`)
     }
   } catch (error) {
-    console.error('❌ Broadcast error:', error)
+    console.error('❌ Broadcast error: ' + String(error))
   }
 }
 
@@ -97,7 +97,7 @@ export async function getTopDonors(limit: number = 10): Promise<Array<{ from_acc
       .limit(10000) // Получаем больше данных для агрегации
 
     if (error) {
-      console.error('❌ [DB] Error fetching donors:', error)
+      console.error('❌ [DB] Error fetching donors: ' + JSON.stringify(error))
       return []
     }
     
@@ -131,7 +131,7 @@ export async function getTopDonors(limit: number = 10): Promise<Array<{ from_acc
     console.log(`✅ [DB] Calculated ${result.length} top donors`)
     return result
   } catch (error) {
-    console.error('❌ [DB] Error calculating top donors:', error)
+    console.error('❌ [DB] Error calculating top donors: ' + String(error))
     return []
   }
 }
@@ -141,7 +141,7 @@ export async function getLastProcessedTxId(): Promise<string | null> {
     const { data } = await supabase.from('parser_state').select('last_tx_id').eq('id', 1).single()
     return data?.last_tx_id || null
   } catch (error) {
-    console.error('❌ [DB] Error getting last processed tx_id:', error)
+    console.error('❌ [DB] Error getting last processed tx_id: ' + String(error))
     return null
   }
 }
@@ -151,7 +151,7 @@ export async function setLastProcessedTxId(txId: string): Promise<void> {
     await supabase.from('parser_state').upsert({ id: 1, last_tx_id: txId })
     console.log(`✅ [DB] Updated last processed tx_id: ${txId.substring(0, 8)}...`)
   } catch (error) {
-    console.error('❌ [DB] Error setting last processed tx_id:', error)
+    console.error('❌ [DB] Error setting last processed tx_id: ' + String(error))
   }
 }
 

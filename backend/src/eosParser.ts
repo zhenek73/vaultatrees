@@ -184,7 +184,7 @@ async function processTransfer(transfer: EOSTransfer): Promise<void> {
       tx_id: transfer.trx_id
     }
 
-    const inserted = await insertDecoration(decoration, transfer.trx_id)
+    const inserted = await insertDecoration(decoration)
     
     if (inserted) {
       await broadcastDecoration(inserted)
@@ -207,7 +207,7 @@ async function processTransfer(transfer: EOSTransfer): Promise<void> {
       tx_id: transfer.trx_id
     }
 
-    const inserted = await insertDecoration(decoration, transfer.trx_id)
+    const inserted = await insertDecoration(decoration)
     
     if (inserted) {
       await broadcastDecoration(inserted)

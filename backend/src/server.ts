@@ -20,7 +20,7 @@ app.use(express.json())
 // Логирование всех запросов
 app.use((req, res, next) => {
   const timestamp = new Date().toISOString()
-  console.log(`📥 [${timestamp}] ${req.method} ${req.path}`, req.query)
+  console.log(`📥 [${timestamp}] ${req.method} ${req.path} ${JSON.stringify(req.query)}`)
   next()
 })
 
@@ -42,7 +42,7 @@ app.get('/api/decorations', async (req, res) => {
     console.log(`✅ Returning ${decorations.length} decorations`)
     res.json({ success: true, data: decorations, count: decorations.length })
   } catch (error: any) {
-    console.error('❌ Error in /api/decorations:', error)
+    console.error('❌ Error in /api/decorations: ' + String(error))
     res.status(500).json({ success: false, error: error.message })
   }
 })
@@ -56,7 +56,7 @@ app.get('/api/donors', async (req, res) => {
     console.log(`✅ Returning ${donors.length} top donors`)
     res.json({ success: true, data: donors, count: donors.length })
   } catch (error: any) {
-    console.error('❌ Error in /api/donors:', error)
+    console.error('❌ Error in /api/donors: ' + String(error))
     res.status(500).json({ success: false, error: error.message })
   }
 })
@@ -70,7 +70,7 @@ export function startServer(): void {
   const port = parseInt(process.env.PORT || '4000', 10)
 
   app.listen(port, '0.0.0.0', () => {
-    console.log('✅ Server listening on port', port)
+    console.log('✅ Server listening on port ' + String(port))
     console.log(`🚀 Server running on http://localhost:${port}`)
     console.log(`   Environment: ${config.nodeEnv}`)
     console.log(`   Frontend: http://localhost:${port}`)
@@ -79,7 +79,7 @@ export function startServer(): void {
 
   // Запуск парсера транзакций
   startParser().catch((error) => {
-    console.error('❌ Failed to start parser:', error)
+    console.error('❌ Failed to start parser: ' + String(error))
   })
 }
 
