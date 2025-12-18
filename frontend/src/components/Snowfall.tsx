@@ -36,7 +36,7 @@ const Snowfall: FC<SnowfallProps> = ({ onBurst }) => {
 
   return (
     <div className="fixed inset-0 pointer-events-none z-10 overflow-hidden">
-      {Array.from({ length: 40 }, (_, i) => {
+      {Array.from({ length: 35 }, (_, i) => {
         const symbol = snowflakes[i % snowflakes.length]
         const size = i % 4 === 0 ? 'text-xl opacity-40' : i % 4 === 1 ? 'text-2xl opacity-60' : i % 4 === 2 ? 'text-3xl opacity-80' : 'text-2xl opacity-70'
         const duration = 12 + (i % 6) * 3
