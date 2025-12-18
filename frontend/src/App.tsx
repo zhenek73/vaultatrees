@@ -661,7 +661,7 @@ useEffect(() => {
       </div>
       
       {/* Шарики — точное позиционирование */}
-      <div className="absolute inset-0 pointer-events-none z-20">
+      <div className="absolute inset-0 pointer-events-none z-30">
         {(stats.balls + localBalls.length) > 0 && imageBounds && ballPositions.length > 0 && (
           Array.from({ length: stats.balls + localBalls.length }, (_, i) => {
             const pos = ballPositions[i % ballPositions.length]
@@ -704,7 +704,7 @@ useEffect(() => {
                   }}
                 />
                 <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-[100]">
-                  <div className="bg-yellow-400 text-black text-xs font-bold px-3 py-1 rounded-lg shadow-lg whitespace-nowrap" style={{ isolation: 'isolate' }}>
+                  <div className="bg-yellow-400 text-black text-xs font-bold px-3 py-1 rounded-lg shadow-lg whitespace-nowrap">
                     {username}
                   </div>
                 </div>
@@ -715,7 +715,7 @@ useEffect(() => {
       </div>
       
       {/* Открытки (конверты) — фиксированные позиции через imageBounds */}
-      <div className="absolute inset-0 pointer-events-none z-20">
+      <div className="absolute inset-0 pointer-events-none z-30">
         {(stats.envelopes + localEnvelopes.length) > 0 && imageBounds && envelopePositions.length > 0 && (
           Array.from({ length: stats.envelopes + localEnvelopes.length }, (_, i) => {
             const pos = envelopePositions[i % envelopePositions.length]
@@ -752,13 +752,13 @@ useEffect(() => {
                   }}
                 />
                 <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-[100]">
-                  <div className="bg-yellow-400 text-black text-xs font-bold px-3 py-2 rounded-lg shadow-lg border border-yellow-600 max-w-[200px]" style={{ isolation: 'isolate' }}>
+                  <div className="bg-yellow-400 text-black text-xs font-bold px-3 py-2 rounded-lg shadow-lg border border-yellow-600 max-w-[200px]">
                     <div className="font-semibold">{username}:</div>
                     {text && (
                       <div className="text-xs mt-1 leading-tight">{text}</div>
                     )}
                   </div>
-                  <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-1 w-0 h-0 border-l-8 border-r-8 border-t-8 border-transparent border-t-yellow-400" style={{ isolation: 'isolate' }}></div>
+                  <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-1 w-0 h-0 border-l-8 border-r-8 border-t-8 border-transparent border-t-yellow-400"></div>
                 </div>
               </div>
             )
@@ -825,10 +825,10 @@ useEffect(() => {
           </div>
         </div>
         <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-4 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-[100]">
-          <div className="bg-yellow-400 text-black text-sm font-bold px-4 py-2 rounded-lg shadow-lg whitespace-nowrap" style={{ isolation: 'isolate' }}>
+          <div className="bg-yellow-400 text-black text-sm font-bold px-4 py-2 rounded-lg shadow-lg whitespace-nowrap">
             {localLights.length >= 100 && !auctionEnded ? 'Поздравляю! Ты зажёг звезду!' : (starBids.length > 0 ? `Звезду зажёг ${starBids[0].username || starBids[0].from_account}! С Новым годом, друзья!` : 'победитель! С Новым годом, друзья!')}
           </div>
-          <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-1 w-0 h-0 border-l-8 border-r-8 border-t-8 border-transparent border-t-yellow-400" style={{ isolation: 'isolate' }}></div>
+          <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-1 w-0 h-0 border-l-8 border-r-8 border-t-8 border-transparent border-t-yellow-400"></div>
         </div>
       </div>
 
