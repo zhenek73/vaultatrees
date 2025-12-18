@@ -81,25 +81,47 @@ export default function App() {
   const [timeLeft, setTimeLeft] = useState('')
   const [bidAmount, setBidAmount] = useState('')
   const [bidError, setBidError] = useState('')
-  const [burstCount, setBurstCount] = useState(() => {
-    const saved = sessionStorage.getItem('burstCount')
-    return saved ? Number(saved) : 0
-  })
+  const [burstCount, setBurstCount] = useState(0)  // обнуляется при перезагрузке
   const [showSalute, setShowSalute] = useState(false)
   const [auctionEnded, setAuctionEnded] = useState(false)
-
-  // Сохранение burstCount в sessionStorage
-  useEffect(() => {
-    sessionStorage.setItem('burstCount', burstCount.toString())
-  }, [burstCount])
+  const [localLights, setLocalLights] = useState<number[]>([])      // индексы локальных огоньков
+  const [localBalls, setLocalBalls] = useState<number[]>([])       // индексы локальных шариков
+  const [localEnvelopes, setLocalEnvelopes] = useState<number[]>([]) // индексы локальных открыток
+  const [showBurstCounter, setShowBurstCounter] = useState(false)  // видимость счётчика снежинок
 
   // Обработка лопания снежинки
   const handleBurst = () => {
     const newCount = burstCount + 1
     setBurstCount(newCount)
+    setShowBurstCounter(true) // Показываем счётчик при лопании
     
-    // Салют каждые 5 лопнувших снежинок
+    // Каждая лопнувшая снежинка → зажигает новый огонёк (следующий свободный)
+    setLocalLights(prev => {
+      const nextIndex = prev.length
+      if (nextIndex < lightPositions.length) return [...prev, nextIndex]
+      return prev
+    })
+    
+    // Каждые 5 лопнувших снежинок → +1 локальный шарик
     if (newCount % 5 === 0) {
+      setLocalBalls(prev => {
+        const nextIndex = prev.length
+        if (nextIndex < ballPositions.length) return [...prev, nextIndex]
+        return prev
+      })
+    }
+    
+    // Каждые 20 лопнувших снежинок → +1 локальная открытка
+    if (newCount % 20 === 0) {
+      setLocalEnvelopes(prev => {
+        const nextIndex = prev.length
+        if (nextIndex < envelopePositions.length) return [...prev, nextIndex]
+        return prev
+      })
+    }
+    
+    // Салют каждые 20 лопнувших снежинок
+    if (newCount % 20 === 0) {
       // Салют - GIF + звук
       setShowSalute(true)
       try {
@@ -109,10 +131,19 @@ export default function App() {
       }
       setTimeout(() => {
         setShowSalute(false)
-        setBurstCount(0)
       }, 3000)
     }
   }
+
+  // Автоматическое скрытие счётчика через 3 секунды после последнего лопания
+  useEffect(() => {
+    if (showBurstCounter) {
+      const timer = setTimeout(() => {
+        setShowBurstCounter(false)
+      }, 3000)
+      return () => clearTimeout(timer)
+    }
+  }, [burstCount, showBurstCounter])
 
   // Окно ожидания с таймером обратного отсчета
   useEffect(() => {
@@ -151,11 +182,7 @@ export default function App() {
         return
       }
       
-      channel = supabase.channel('public:decorations', {
-        config: {
-          private: true  // фикс: канал private, чтобы принимать broadcast от service_role
-        }
-      })
+      channel = supabase.channel('public:decorations')
         .on('broadcast', { event: 'new_decoration' }, (payload) => {
           console.log('📡 [Realtime] Received new decoration:', payload.payload)
           const newDecoration = payload.payload as Decoration
@@ -180,14 +207,10 @@ export default function App() {
             return [newDec, ...prev]
           })
         })
-        .subscribe((status) => {
+        .subscribe((status: any) => {
           console.log('[Realtime] Subscription status:', status)
           if (status === 'SUBSCRIBED') {
-            console.log('✅ [Realtime] Subscribed to private channel')
-          } else if (status === 'CLOSED') {
-            console.log('[Realtime] Channel closed')
-          } else if (status === 'CHANNEL_ERROR') {
-            console.error('[Realtime] Channel error')
+            console.log('✅ [Realtime] Subscribed to public channel')
           }
         })
     }
@@ -196,7 +219,7 @@ export default function App() {
     
     return () => {
       if (channel) {
-        getSupabaseClient().then(client => {
+        getSupabaseClient().then((client: any) => {
           if (client) {
             client.removeChannel(channel!)
             console.log('🔌 [Realtime] Unsubscribed from decorations channel')
@@ -230,6 +253,7 @@ export default function App() {
     const total = decorations.length
     return { lights: Math.floor(lightsAmount), balls, envelopes, gifts, total }
   }, [decorations])
+
 
   // Расчёт лидирующей ставки на звезду
   const starBids = useMemo(() => {
@@ -578,7 +602,7 @@ useEffect(() => {
 
       {/* Огоньки — точное позиционирование через imageBounds */}
       <div className="absolute inset-0 pointer-events-none z-15">
-        {stats.lights > 0 && imageBounds && lightPositions.length > 0 && (() => {
+        {(stats.lights + localLights.length) > 0 && imageBounds && lightPositions.length > 0 && (() => {
           // Подсчитываем количество свежих огоньков
           const freshLights = decorations.filter(d => 
             d.type?.toLowerCase() === 'light' && 
@@ -586,13 +610,19 @@ useEffect(() => {
             (Date.now() - d.createdAt) < 60000
           ).length
           
-          return Array.from({ length: stats.lights }, (_, i) => {
+          const totalLights = stats.lights + localLights.length
+          const isFullyLit = localLights.length >= 100
+          
+          return Array.from({ length: totalLights }, (_, i) => {
+            const isLocal = i >= stats.lights
             const pos = lightPositions[i % lightPositions.length]
             const color = lightColors[i % lightColors.length] || LIGHT_COLORS[0]
             const delay = lightDelays[i % lightDelays.length] || 0
             
             // Последние N огоньков считаются свежими (где N = количество свежих decorations)
-            const isFresh = i >= stats.lights - freshLights && freshLights > 0
+            const isFresh = !isLocal && i >= stats.lights - freshLights && freshLights > 0
+            const lightSize = isFullyLit ? (isFresh ? 0.025 : 0.018) : (isFresh ? 0.021 : 0.014)
+            const lightBrightness = isFullyLit ? 1.8 : (isFresh ? 1.5 : 1)
 
             const relX = pos.x / 1024   // оригинал light-positions.json — 512×1024
             const relY = pos.y / 2048
@@ -607,12 +637,12 @@ useEffect(() => {
                 style={{
                   left: `${screenX}px`,
                   top: `${screenY}px`,
-                  width: imageBounds ? `${imageBounds.width * (isFresh ? 0.021 : 0.014)}px` : (isFresh ? '21px' : '14px'),
-                  height: imageBounds ? `${imageBounds.width * (isFresh ? 0.021 : 0.014)}px` : (isFresh ? '21px' : '14px'),
+                  width: imageBounds ? `${imageBounds.width * lightSize}px` : (isFresh ? '21px' : '14px'),
+                  height: imageBounds ? `${imageBounds.width * lightSize}px` : (isFresh ? '21px' : '14px'),
                   backgroundColor: color,
                   borderRadius: '50%',
                   transform: `translate(-50%, -50%) ${isFresh ? 'scale(1.5)' : 'scale(1)'}`,
-                  filter: isFresh ? 'brightness(1.5) blur(1px)' : 'blur(1px)',
+                  filter: `brightness(${lightBrightness}) blur(1px)`,
                   boxShadow: `
                     0 0 ${imageBounds ? imageBounds.width * (isFresh ? 0.03 : 0.02) : (isFresh ? 15 : 10)}px ${color},
                     0 0 ${imageBounds ? imageBounds.width * (isFresh ? 0.06 : 0.04) : (isFresh ? 30 : 20)}px ${color},
@@ -632,10 +662,12 @@ useEffect(() => {
       
       {/* Шарики — точное позиционирование */}
       <div className="absolute inset-0 pointer-events-none z-20">
-        {stats.balls > 0 && imageBounds && ballPositions.length > 0 && (
-          Array.from({ length: stats.balls }, (_, i) => {
+        {(stats.balls + localBalls.length) > 0 && imageBounds && ballPositions.length > 0 && (
+          Array.from({ length: stats.balls + localBalls.length }, (_, i) => {
             const pos = ballPositions[i % ballPositions.length]
-            const ball = decorations.filter(d => d.type === 'ball')[i]
+            const isLocal = i >= stats.balls
+            const ball = isLocal ? null : decorations.filter(d => d.type === 'ball')[i]
+            const username = isLocal ? 'Zhenek' : (ball?.username || 'Аноним')
 
             const relX = pos.x / 1024  // ball-positions.json — 1024×2048
             const relY = pos.y / 2048
@@ -650,7 +682,7 @@ useEffect(() => {
             const screenX = imageBounds.left + adjustedRelX * imageBounds.width
             const screenY = imageBounds.top + adjustedRelY * imageBounds.height+13
 
-            const isFresh = ball?.createdAt && (Date.now() - ball.createdAt) < 60000
+            const isFresh = !isLocal && ball?.createdAt && (Date.now() - ball.createdAt) < 60000
 
             return (
               <div
@@ -671,9 +703,9 @@ useEffect(() => {
                     filter: isFresh ? 'brightness(1.5) drop-shadow(0 4px 8px rgba(0,0,0,0.5))' : 'drop-shadow(0 4px 8px rgba(0,0,0,0.5))'
                   }}
                 />
-                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
-                  <div className="bg-yellow-400 text-black text-xs font-bold px-3 py-1 rounded-lg shadow-lg whitespace-nowrap">
-                    {ball?.username || 'Аноним'}
+                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-[100]">
+                  <div className="bg-yellow-400 text-black text-xs font-bold px-3 py-1 rounded-lg shadow-lg whitespace-nowrap" style={{ isolation: 'isolate' }}>
+                    {username}
                   </div>
                 </div>
               </div>
@@ -684,10 +716,13 @@ useEffect(() => {
       
       {/* Открытки (конверты) — фиксированные позиции через imageBounds */}
       <div className="absolute inset-0 pointer-events-none z-20">
-        {stats.envelopes > 0 && imageBounds && envelopePositions.length > 0 && (
-          Array.from({ length: stats.envelopes }, (_, i) => {
+        {(stats.envelopes + localEnvelopes.length) > 0 && imageBounds && envelopePositions.length > 0 && (
+          Array.from({ length: stats.envelopes + localEnvelopes.length }, (_, i) => {
             const pos = envelopePositions[i % envelopePositions.length]
-            const envelope = decorations.filter(d => d.type?.toLowerCase() === 'candle' || d.type?.toLowerCase() === 'envelope')[i]
+            const isLocal = i >= stats.envelopes
+            const envelope = isLocal ? null : decorations.filter(d => d.type?.toLowerCase() === 'candle' || d.type?.toLowerCase() === 'envelope')[i]
+            const username = isLocal ? 'Zhenek' : (envelope?.username || envelope?.from_account || 'Аноним')
+            const text = isLocal ? 'Здесь могло бы быть Ваше поздравление!😉' : (envelope?.text || null)
 
             const relX = pos.x / 1024
             const relY = pos.y / 2048
@@ -695,7 +730,7 @@ useEffect(() => {
             const screenX = imageBounds.left + relX * imageBounds.width
             const screenY = imageBounds.top + relY * imageBounds.height
 
-            const isFresh = envelope?.createdAt && (Date.now() - envelope.createdAt) < 60000
+            const isFresh = !isLocal && envelope?.createdAt && (Date.now() - envelope.createdAt) < 60000
 
             return (
               <div
@@ -716,14 +751,14 @@ useEffect(() => {
                     filter: isFresh ? 'brightness(1.5) drop-shadow(0 4px 8px rgba(0,0,0,0.5))' : 'drop-shadow(0 4px 8px rgba(0,0,0,0.5))'
                   }}
                 />
-                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
-                <div className="bg-yellow-400 text-black text-xs font-bold px-3 py-2 rounded-lg shadow-lg border border-yellow-600 max-w-[200px]">
-  <div className="font-semibold">{envelope?.username || envelope?.from_account || 'Аноним'}:</div>
-  {envelope?.text && (
-    <div className="text-xs mt-1 leading-tight">{envelope.text}</div>
-  )}
-</div>
-                  <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-1 w-0 h-0 border-l-8 border-r-8 border-t-8 border-transparent border-t-yellow-400"></div>
+                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-[100]">
+                  <div className="bg-yellow-400 text-black text-xs font-bold px-3 py-2 rounded-lg shadow-lg border border-yellow-600 max-w-[200px]" style={{ isolation: 'isolate' }}>
+                    <div className="font-semibold">{username}:</div>
+                    {text && (
+                      <div className="text-xs mt-1 leading-tight">{text}</div>
+                    )}
+                  </div>
+                  <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-1 w-0 h-0 border-l-8 border-r-8 border-t-8 border-transparent border-t-yellow-400" style={{ isolation: 'isolate' }}></div>
                 </div>
               </div>
             )
@@ -760,7 +795,7 @@ useEffect(() => {
         className="group absolute top-[238px] left-1/2 z-25"
         style={{
           transform: 'translateX(calc(-50% - 2px))',
-          opacity: auctionEnded ? 1 : 0,
+          opacity: auctionEnded || localLights.length >= 100 ? 1 : 0,
           transition: 'opacity 1s ease-in-out',
         }}
       >
@@ -789,13 +824,14 @@ useEffect(() => {
             <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 -rotate-45 w-12 h-1 bg-yellow-400 blur-sm"></div>
           </div>
         </div>
-        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-4 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
-          <div className="bg-yellow-400 text-black text-sm font-bold px-4 py-2 rounded-lg shadow-lg whitespace-nowrap">
-            Звезду зажёг {starBids.length > 0 ? starBids[0].username || starBids[0].from_account : 'победитель'}! С Новым годом, друзья!
+        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-4 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-[100]">
+          <div className="bg-yellow-400 text-black text-sm font-bold px-4 py-2 rounded-lg shadow-lg whitespace-nowrap" style={{ isolation: 'isolate' }}>
+            {localLights.length >= 100 && !auctionEnded ? 'Поздравляю! Ты зажёг звезду!' : (starBids.length > 0 ? `Звезду зажёг ${starBids[0].username || starBids[0].from_account}! С Новым годом, друзья!` : 'победитель! С Новым годом, друзья!')}
           </div>
-          <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-1 w-0 h-0 border-l-8 border-r-8 border-t-8 border-transparent border-t-yellow-400"></div>
+          <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-1 w-0 h-0 border-l-8 border-r-8 border-t-8 border-transparent border-t-yellow-400" style={{ isolation: 'isolate' }}></div>
         </div>
       </div>
+
 
       {/* Кнопка "Украсить ёлку" внизу (поднята выше) */}
       <div className="absolute left-1/2 -translate-x-1/2 z-40 w-full px-4" style={{ bottom: 'max(16px, env(safe-area-inset-bottom, var(--tg-content-safe-area-inset-bottom, 20px)))' }}>
@@ -828,7 +864,7 @@ useEffect(() => {
               onClick={() => handleOpenModal('envelope')}
               className="w-full bg-gradient-to-r from-yellow-500 via-amber-500 to-yellow-600 text-white font-bold py-3 px-6 rounded-full text-lg shadow-xl hover:scale-105 transition flex items-center justify-center gap-2"
             >
-              <img src="/envelope.png" className="w-8 h-8" alt="Открытка" />
+              <img src="/envelope.png" className="w-6 h-8" alt="Открытка" />
               Открытка (100 MLNK)
             </button>
             
@@ -1107,13 +1143,21 @@ useEffect(() => {
                           {dec.type === 'ball' && '🎈 Шарик'}
                           {(dec.type === 'candle' || dec.type === 'envelope') && '📮 Открытка'}
                           {dec.type === 'gift' && '🎁 Подарок'}
-                          {dec.type === 'star' && (typeof dec.amount === 'number' ? dec.amount : parseFloat(dec.amount || '0')) === currentBid && `⭐ ${dec.username || dec.from_account} получает право зажечь звезду на Новый год! 🎉`}
+                          {dec.type === 'star' && (
+                            <>
+                              ⭐ {dec.username || dec.from_account} получает право зажечь звезду на Новый год! 🎉
+                              {(typeof dec.amount === 'number' ? dec.amount : parseFloat(dec.amount || '0')) === currentBid && ' (текущий лидер!)'}
+                            </>
+                          )}
                         </div>
                         <div className="text-white mt-1">
                           От: {dec.from_account}
                         </div>
                         <div className="text-pink-300 text-xs mt-1">
-                          Сумма: {typeof dec.amount === 'number' ? dec.amount.toFixed(6) : dec.amount} MLNK
+                          Сумма: {(() => {
+                            const amt = typeof dec.amount === 'number' ? dec.amount : parseFloat(String(dec.amount || '0'))
+                            return amt.toFixed(6)
+                          })()} MLNK
                         </div>
                       </div>
                     </div>
@@ -1173,6 +1217,13 @@ useEffect(() => {
             Огоньков: {stats.lights} • Шариков: {stats.balls} • Открыток: {stats.envelopes} 
           </p>
           <p className="text-pink-200 text-xs mt-1">Всего: {stats.lights+stats.balls+stats.envelopes+stats.gifts} украшений</p>
+        </div>
+      )}
+
+      {/* Счётчик лопнувших снежинок */}
+      {showBurstCounter && burstCount > 0 && (
+        <div className="fixed top-4 right-4 bg-yellow-400 text-black font-bold text-2xl px-6 py-3 rounded-full shadow-2xl z-50 animate-pulse transition-opacity duration-1000 opacity-100">
+          +{burstCount}
         </div>
       )}
 

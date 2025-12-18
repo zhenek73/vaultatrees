@@ -1,11 +1,15 @@
 export type DecorationType = 'light' | 'ball' | 'candle' | 'gift' | 'star'
 
 export interface Decoration {
+  id?: number
   type: DecorationType
   from_account: string
-  username?: string | null
-  text?: string | null
-  amount: number
+  username?: string
+  text?: string
+  image_url?: string
+  amount: string
+  tx_id: string
+  created_at?: string
 }
 
 export interface EOSTransfer {

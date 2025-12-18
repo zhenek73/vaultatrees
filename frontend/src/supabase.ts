@@ -1,29 +1,28 @@
-import { createClient } from '@supabase/supabase-js'
+import { createClient, SupabaseClient } from '@supabase/supabase-js'
 
-// Получаем конфигурацию Supabase через API
-let supabaseClient: ReturnType<typeof createClient> | null = null
+let supabase: SupabaseClient | null = null
+let configPromise: Promise<{ supabaseUrl: string, supabaseAnonKey: string }> | null = null
 
-export const getSupabaseClient = async () => {
-  if (supabaseClient) return supabaseClient
-  
-  try {
-    const response = await fetch('/api/config')
-    if (!response.ok) {
-      console.warn('⚠️ [Supabase] Failed to get config from API, Realtime disabled')
-      return null
-    }
-    
-    const data = await response.json()
-    if (!data.supabaseUrl || !data.supabaseAnonKey) {
-      console.warn('⚠️ [Supabase] No configuration in API response, Realtime disabled')
-      return null
-    }
-    
-    supabaseClient = createClient(data.supabaseUrl, data.supabaseAnonKey)
-    return supabaseClient
-  } catch (error) {
-    console.error('❌ [Supabase] Error getting config:', error)
-    return null
+async function fetchConfig() {
+  if (configPromise) return configPromise
+
+  configPromise = fetch('/api/config')
+    .then(res => res.json())
+    .catch(error => {
+      console.error('❌ [Supabase Client] Error fetching config:', error)
+      return { supabaseUrl: '', supabaseAnonKey: '' }
+    })
+  return configPromise
+}
+
+export async function getSupabaseClient(): Promise<SupabaseClient | null> {
+  if (supabase) return supabase
+
+  const config = await fetchConfig()
+  if (config.supabaseUrl && config.supabaseAnonKey) {
+    supabase = createClient(config.supabaseUrl, config.supabaseAnonKey)
+    return supabase
   }
+  return null
 }
 
