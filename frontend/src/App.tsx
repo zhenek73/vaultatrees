@@ -662,111 +662,128 @@ useEffect(() => {
         })()}
       </div>
       
-      {/* Шарики — точное позиционирование */}
-      <div className="absolute inset-0 pointer-events-none z-30">
-        {(stats.balls + localBalls.length) > 0 && imageBounds && ballPositions.length > 0 && (
-          Array.from({ length: stats.balls + localBalls.length }, (_, i) => {
-            const pos = ballPositions[i % ballPositions.length]
-            const isLocal = i >= stats.balls
-            const ball = isLocal ? null : decorations.filter(d => d.type === 'ball')[i]
-            const username = isLocal ? 'Zhenek' : (ball?.username || 'Аноним')
+     {/* Шарики — точное позиционирование */}
+<div className="absolute inset-0 pointer-events-none z-30">
+  {(stats.balls + localBalls.length) > 0 && imageBounds && ballPositions.length > 0 && (
+    Array.from({ length: stats.balls + localBalls.length }, (_, i) => {
+      const pos = ballPositions[i % ballPositions.length]
+      const isLocal = i >= stats.balls
+      const ball = isLocal ? null : decorations.filter(d => d.type === 'ball')[i]
+      const username = isLocal ? 'Zhenek' : (ball?.username || 'Аноним')
 
-            const relX = pos.x / 1024  // ball-positions.json — 1024×2048
-            const relY = pos.y / 2048
-            
-            // Растяжка +5% по X и Y (чтобы шарики чуть разъехались в стороны и вниз)
-            const SPREAD_X = 1.1
-            const SPREAD_Y = 1.1
-            
-            const adjustedRelX = 0.5 + (relX - 0.5) * SPREAD_X
-            const adjustedRelY = 0.5 + (relY - 0.5) * SPREAD_Y
-            
-            const screenX = imageBounds.left + adjustedRelX * imageBounds.width
-            const screenY = imageBounds.top + adjustedRelY * imageBounds.height+13
-
-            const isFresh = !isLocal && ball?.createdAt && (Date.now() - ball.createdAt) < 60000
-
-            return (
-              <div
-                key={`ball-${i}`}
-                className={`group absolute -translate-x-1/2 -translate-y-1/2 pointer-events-auto hover:animate-wiggle transition-all duration-1000 ${isFresh ? 'animate-bounce-slight drop-shadow-glow' : ''}`}
-                style={{
-                  left: `${screenX}px`,
-                  top: `${screenY}px`,
-                  transform: `translate(-50%, -50%) ${isFresh ? 'scale(1.25)' : 'scale(1)'}`,
-                }}
-              >
-                <img
-                  src="/malinka-ball.svg"
-                  alt="Шарик"
-                  style={{
-                    width: imageBounds ? `${imageBounds.width * (isFresh ? 0.09375 : 0.075)}px` : (isFresh ? '60px' : '48px'),
-                    height: 'auto',  // сохраняем пропорции SVG
-                    filter: isFresh ? 'brightness(1.5) drop-shadow(0 4px 8px rgba(0,0,0,0.5))' : 'drop-shadow(0 4px 8px rgba(0,0,0,0.5))'
-                  }}
-                />
-                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-[100]">
-                  <div className="bg-yellow-400 text-black text-xs font-bold px-3 py-1 rounded-lg shadow-lg whitespace-nowrap">
-                    {username}
-                  </div>
-                </div>
-              </div>
-            )
-          })
-        )}
-      </div>
+      const relX = pos.x / 1024
+      const relY = pos.y / 2048
       
-      {/* Открытки (конверты) — фиксированные позиции через imageBounds */}
-      <div className="absolute inset-0 pointer-events-none z-30">
-        {(stats.envelopes + localEnvelopes.length) > 0 && imageBounds && envelopePositions.length > 0 && (
-          Array.from({ length: stats.envelopes + localEnvelopes.length }, (_, i) => {
-            const pos = envelopePositions[i % envelopePositions.length]
-            const isLocal = i >= stats.envelopes
-            const envelope = isLocal ? null : decorations.filter(d => d.type?.toLowerCase() === 'candle' || d.type?.toLowerCase() === 'envelope')[i]
-            const username = isLocal ? 'Zhenek' : (envelope?.username || envelope?.from_account || 'Аноним')
-            const text = isLocal ? 'Здесь могло бы быть Ваше поздравление!😉' : (envelope?.text || null)
+      const SPREAD_X = 1.1
+      const SPREAD_Y = 1.1
+      
+      const adjustedRelX = 0.5 + (relX - 0.5) * SPREAD_X
+      const adjustedRelY = 0.5 + (relY - 0.5) * SPREAD_Y
+      
+      const screenX = imageBounds.left + adjustedRelX * imageBounds.width
+      const screenY = imageBounds.top + adjustedRelY * imageBounds.height + 13
 
-            const relX = pos.x / 1024
-            const relY = pos.y / 2048
+      const isFresh = !isLocal && ball?.createdAt && (Date.now() - ball.createdAt) < 60000
 
-            const screenX = imageBounds.left + relX * imageBounds.width
-            const screenY = imageBounds.top + relY * imageBounds.height
+      return (
+        <div
+          key={`ball-${i}`}
+          className={`group absolute -translate-x-1/2 -translate-y-1/2 pointer-events-auto hover:animate-wiggle transition-all duration-1000 ${isFresh ? 'animate-bounce-slight drop-shadow-glow' : ''}`}
+          style={{
+            left: `${screenX}px`,
+            top: `${screenY}px`,
+            transform: `translate(-50%, -50%) ${isFresh ? 'scale(1.25)' : 'scale(1)'}`,
+            zIndex: 30, // базовый z-index
+          }}
+          // 🎈 ДОБАВЛЯЕМ МАГИЮ ДЛЯ ШАРИКОВ
+          onMouseEnter={(e) => {
+            e.currentTarget.style.zIndex = '9999'
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.zIndex = '30'
+          }}
+        >
+          <img
+            src="/malinka-ball.svg"
+            alt="Шарик"
+            style={{
+              width: imageBounds ? `${imageBounds.width * (isFresh ? 0.09375 : 0.075)}px` : (isFresh ? '60px' : '48px'),
+              height: 'auto',
+              filter: isFresh ? 'brightness(1.5) drop-shadow(0 4px 8px rgba(0,0,0,0.5))' : 'drop-shadow(0 4px 8px rgba(0,0,0,0.5))'
+            }}
+          />
+          <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+            <div className="bg-yellow-400 text-black text-xs font-bold px-3 py-1 rounded-lg shadow-lg whitespace-nowrap">
+              {username}
+            </div>
+          </div>
+        </div>
+      )
+    })
+  )}
+  {/* Открытки (конверты) — фиксированные позиции через imageBounds */}
+  {/*объединил шарики и открытки в один слой. пока не ясно чем это грозит если что было так
+  
+       </div>
+    <div className="absolute inset-0 pointer-events-none z-30">
+ */}
+  {(stats.envelopes + localEnvelopes.length) > 0 && imageBounds && envelopePositions.length > 0 && (
+    Array.from({ length: stats.envelopes + localEnvelopes.length }, (_, i) => {
+      const pos = envelopePositions[i % envelopePositions.length]
+      const isLocal = i >= stats.envelopes
+      const envelope = isLocal ? null : decorations.filter(d => d.type?.toLowerCase() === 'candle' || d.type?.toLowerCase() === 'envelope')[i]
+      const username = isLocal ? 'Zhenek' : (envelope?.username || envelope?.from_account || 'Аноним')
+      const text = isLocal ? 'Здесь могло бы быть Ваше поздравление!😉' : (envelope?.text || null)
 
-            const isFresh = !isLocal && envelope?.createdAt && (Date.now() - envelope.createdAt) < 60000
+      const relX = pos.x / 1024
+      const relY = pos.y / 2048
 
-            return (
-              <div
-                key={`envelope-${i}`}
-                className={`group absolute -translate-x-1/2 -translate-y-1/2 pointer-events-auto hover:animate-wiggle transition-all duration-1000 ${isFresh ? 'animate-pulse drop-shadow-glow' : ''}`}
-                style={{
-                  left: `${screenX}px`,
-                  top: `${screenY}px`,
-                  transform: `translate(-50%, -50%) ${isFresh ? 'scale(1.5)' : 'scale(1)'}`,
-                }}
-              >
-                <img
-                  src="/envelope.png"
-                  alt="Открытка"
-                  style={{
-                    width: imageBounds ? `${imageBounds.width * (isFresh ? 0.075 : 0.05)}px` : (isFresh ? '72px' : '48px'),
-                    height: 'auto',
-                    filter: isFresh ? 'brightness(1.5) drop-shadow(0 4px 8px rgba(0,0,0,0.5))' : 'drop-shadow(0 4px 8px rgba(0,0,0,0.5))'
-                  }}
-                />
-                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-[100]">
-                  <div className="bg-yellow-400 text-black text-xs font-bold px-3 py-2 rounded-lg shadow-lg border border-yellow-600 max-w-[200px]">
-                    <div className="font-semibold">{username}:</div>
-                    {text && (
-                      <div className="text-xs mt-1 leading-tight">{text}</div>
-                    )}
-                  </div>
-                  <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-1 w-0 h-0 border-l-8 border-r-8 border-t-8 border-transparent border-t-yellow-400"></div>
-                </div>
-              </div>
-            )
-          })
-        )}
-      </div>
+      const screenX = imageBounds.left + relX * imageBounds.width
+      const screenY = imageBounds.top + relY * imageBounds.height
+
+      const isFresh = !isLocal && envelope?.createdAt && (Date.now() - envelope.createdAt) < 60000
+
+      return (
+        <div
+          key={`envelope-${i}`}
+          className={`group absolute -translate-x-1/2 -translate-y-1/2 pointer-events-auto hover:animate-wiggle transition-all duration-1000 ${isFresh ? 'animate-pulse drop-shadow-glow' : ''}`}
+          style={{
+            left: `${screenX}px`,
+            top: `${screenY}px`,
+            transform: `translate(-50%, -50%) ${isFresh ? 'scale(1.5)' : 'scale(1)'}`,
+            zIndex: 30, // базовый z-index
+          }}
+          // 🔥 ДОБАВЛЯЕМ ДИНАМИЧЕСКИЙ z-index через inline стиль
+          onMouseEnter={(e) => {
+            e.currentTarget.style.zIndex = '9999'
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.zIndex = '30'
+          }}
+        >
+          <img
+            src="/envelope.png"
+            alt="Открытка"
+            style={{
+              width: imageBounds ? `${imageBounds.width * (isFresh ? 0.075 : 0.05)}px` : (isFresh ? '72px' : '48px'),
+              height: 'auto',
+              filter: isFresh ? 'brightness(1.5) drop-shadow(0 4px 8px rgba(0,0,0,0.5))' : 'drop-shadow(0 4px 8px rgba(0,0,0,0.5))'
+            }}
+          />
+          <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+            <div className="bg-yellow-400 text-black text-xs font-bold px-3 py-2 rounded-lg shadow-lg border border-yellow-600 max-w-[200px]">
+              <div className="font-semibold">{username}:</div>
+              {text && (
+                <div className="text-xs mt-1 leading-tight">{text}</div>
+              )}
+            </div>
+            <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-1 w-0 h-0 border-l-8 border-r-8 border-t-8 border-transparent border-t-yellow-400"></div>
+          </div>
+        </div>
+      )
+    })
+  )}
+</div>
       
       {/* Гифки - полноразмерные */}
       {decorations
