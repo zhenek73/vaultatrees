@@ -1,7 +1,15 @@
 import { Decoration, TopDonor } from './types'
+import { createClient } from '@supabase/supabase-js'
 
 // В режиме разработки используем прокси Vite, в продакшене - полный URL или относительный путь
 const API_URL = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? '/api' : '/api')
+
+// Синхронное создание Supabase клиента через env-переменные Vite
+// Это самый надёжный способ для Telegram Mini App (без fetch config.json)
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+
+let supabaseClient: any = null
 
 export async function fetchDecorations(): Promise<Decoration[]> {
   try {
@@ -67,5 +75,20 @@ export async function fetchTopDonors(limit: number = 10): Promise<TopDonor[]> {
     console.error('❌ [API] Error fetching top donors:', error)
     return []
   }
+}
+
+export async function getSupabaseClient() {
+  if (!supabaseClient) {
+    if (!supabaseUrl || !supabaseAnonKey) {
+      console.error('⚠️ [Supabase] Missing env variables VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY')
+      console.error('💡 [Supabase] Add them to frontend/.env and redeploy')
+      return null
+    }
+    
+    supabaseClient = createClient(supabaseUrl, supabaseAnonKey)
+    console.log('✅ [Supabase] Client initialized')
+  }
+  
+  return supabaseClient
 }
 

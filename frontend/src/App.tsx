@@ -3,7 +3,7 @@ import { Sparkles, X } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
 import { fetchDecorations, fetchTopDonors } from './api'
 import { Decoration, TopDonor } from './types'
-import { getSupabaseClient } from './supabase'
+import { getSupabaseClient } from './api'
 
 const Snowfall = React.lazy(() => import('./components/Snowfall'))
 
@@ -181,36 +181,41 @@ export default function App() {
         console.warn('⚠️ [App] Supabase client not available, Realtime disabled')
         return
       }
-      
-      channel = supabase.channel('public:decorations')
-        .on('broadcast', { event: 'new_decoration' }, (payload) => {
-          console.log('📡 [Realtime] Received new decoration:', payload.payload)
-          const newDecoration = payload.payload as Decoration
-          
-          // Добавляем timestamp для вау-эффекта
-          const newDec = { ...newDecoration, createdAt: Date.now() }
-          
-          // Проверка на дубликаты (по комбинации полей)
-          setDecorations(prev => {
-            const isDuplicate = prev.some(d => 
-              d.type === newDec.type &&
-              d.from_account === newDec.from_account &&
-              d.amount === newDec.amount &&
-              (d.text || '') === (newDec.text || '')
-            )
-            
-            if (isDuplicate) {
-              console.log('⚠️ [Realtime] Duplicate decoration ignored')
-              return prev
-            }
-            
-            return [newDec, ...prev]
-          })
-        })
-        .subscribe((status: any) => {
+
+      // Правильная подписка на изменения в БД (только новые INSERT)
+      channel = supabase
+        .channel('decorations-db-changes')
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'decorations'
+          },
+          (payload: any) => {
+            console.log('📡 [Realtime] New decoration inserted:', payload.new)
+            const newDecoration = payload.new as Decoration
+
+            const newDec = { ...newDecoration, createdAt: Date.now() }
+
+            setDecorations(prev => {
+              // Защита от дубликатов по id
+              if (prev.some(d => d.id === newDec.id)) {
+                console.log('⚠️ [Realtime] Duplicate ignored')
+                return prev
+              }
+
+              console.log('✨ [Realtime] Adding new decoration')
+              return [newDec, ...prev]
+            })
+          }
+        )
+        .subscribe((status: string) => {
           console.log('[Realtime] Subscription status:', status)
           if (status === 'SUBSCRIBED') {
-            console.log('✅ [Realtime] Subscribed to public channel')
+            console.log('✅ [Realtime] Connected to database changes')
+          } else if (status === 'CHANNEL_ERROR') {
+            console.error('❌ [Realtime] Channel error — проверь лимиты Supabase')
           }
         })
     }

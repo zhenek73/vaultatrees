@@ -4,9 +4,47 @@ import { Decoration, DecorationType } from './types.js'
 
 const supabase = createClient(config.supabase.url, config.supabase.anonKey)
 
+// In-memory кеш обработанных tx_id для снижения Egress трафика
+// При старте загружается последние 1000 tx_id из БД
+const processedTxCache = new Set<string>()
+
+/**
+ * Инициализирует in-memory кеш tx_id при старте парсера.
+ * Загружает последние 1000 обработанных tx_id из базы данных.
+ * Это позволяет избежать повторных запросов к Supabase для проверки дубликатов.
+ */
+export async function initTxCache(): Promise<void> {
+  try {
+    console.log('🔄 [Cache] Loading recent tx_ids into memory...')
+    const { data, error } = await supabase
+      .from('decorations')
+      .select('tx_id')
+      .order('created_at', { ascending: false })
+      .limit(1000)
+
+    if (error) {
+      console.error('❌ [Cache] Error loading tx_ids: ' + JSON.stringify(error))
+      return
+    }
+
+    if (data) {
+      data.forEach(d => processedTxCache.add(d.tx_id))
+      console.log(`✅ [Cache] Loaded ${data.length} tx_ids into cache`)
+    }
+  } catch (error) {
+    console.error('❌ [Cache] Error: ' + String(error))
+  }
+}
+
 export async function insertDecoration(decoration: Decoration): Promise<Decoration | null> {
   try {
-    // Проверка на дубликат по tx_id
+    // ✅ Сначала проверяем in-memory кеш (мгновенно, без запроса к Supabase)
+    if (processedTxCache.has(decoration.tx_id)) {
+      console.log(`⚠️  [Cache] Transaction ${decoration.tx_id.substring(0, 8)}... already in cache, skipping`)
+      return null
+    }
+
+    // ✅ Если нет в кеше, проверяем в базе данных (редкий случай)
     const { data: existing } = await supabase
       .from('decorations')
       .select('id')
@@ -14,7 +52,8 @@ export async function insertDecoration(decoration: Decoration): Promise<Decorati
       .single()
 
     if (existing) {
-      console.log(`⚠️  Transaction ${decoration.tx_id} already processed, skipping`)
+      console.log(`⚠️  [DB] Transaction ${decoration.tx_id.substring(0, 8)}... found in DB, adding to cache`)
+      processedTxCache.add(decoration.tx_id)
       return null
     }
 
@@ -36,10 +75,50 @@ export async function insertDecoration(decoration: Decoration): Promise<Decorati
     }
 
     console.log(`✅ Decoration inserted: ${decoration.type} from ${decoration.from_account}`)
+    
+    // ✅ Добавляем tx_id в кеш после успешной вставки
+    processedTxCache.add(decoration.tx_id)
+    
     return data
   } catch (error) {
     console.error('❌ Database error: ' + String(error))
     return null
+  }
+}
+
+/**
+ * Проверяет, какие из переданных tx_id уже существуют в базе данных.
+ * Используется для batch-проверки вместо множественных одиночных запросов.
+ * Найденные tx_id автоматически добавляются в in-memory кеш.
+ * 
+ * @param txIds - Массив tx_id для проверки
+ * @returns Set с tx_id, которые уже есть в базе данных
+ */
+export async function checkExistingTxIds(txIds: string[]): Promise<Set<string>> {
+  try {
+    if (txIds.length === 0) return new Set()
+    console.log(`🔍 [Batch] Checking ${txIds.length} tx_ids in database...`)
+    
+    const { data, error } = await supabase
+      .from('decorations')
+      .select('tx_id')
+      .in('tx_id', txIds)
+
+    if (error) {
+      console.error('❌ [Batch] Error checking tx_ids: ' + JSON.stringify(error))
+      return new Set()
+    }
+
+    const existingSet = new Set(data?.map(d => d.tx_id) || [])
+    console.log(`✅ [Batch] Found ${existingSet.size} existing tx_ids`)
+    
+    // ✅ Добавляем все найденные tx_id в кеш
+    existingSet.forEach(txId => processedTxCache.add(txId))
+    
+    return existingSet
+  } catch (error) {
+    console.error('❌ [Batch] Error: ' + String(error))
+    return new Set()
   }
 }
 
@@ -65,25 +144,6 @@ export async function getDecorations(limit: number = 1000): Promise<Decoration[]
   } catch (error) {
     console.error('❌ Database error: ' + String(error))
     return []
-  }
-}
-
-export async function broadcastDecoration(decoration: Decoration): Promise<void> {
-  try {
-    const channel = supabase.channel('decorations')
-    const result = await channel.send({
-      type: 'broadcast',
-      event: 'new_decoration',
-      payload: decoration
-    })
-
-    if (result !== 'ok') {
-      console.error('❌ Error broadcasting decoration: ' + String(result))
-    } else {
-      console.log(`📡 Broadcasted decoration: ${decoration.type}`)
-    }
-  } catch (error) {
-    console.error('❌ Broadcast error: ' + String(error))
   }
 }
 

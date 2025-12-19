@@ -1,7 +1,7 @@
 import axios from 'axios'
 import { config } from './config.js'
 import { EOSTransfer, Decoration, DecorationType } from './types.js'
-import { insertDecoration, broadcastDecoration } from './database.js'
+import { insertDecoration, initTxCache, checkExistingTxIds } from './database.js'
 
 let lastProcessedBlock = 0
 let isPolling = false
@@ -157,7 +157,7 @@ async function processTransfer(transfer: EOSTransfer): Promise<void> {
   console.log(`🔄 [EOS] Processing transfer: ${transfer.trx_id.substring(0, 8)}... from ${transfer.from}, amount: ${transfer.quantity}, memo: "${transfer.memo}"`)
   
   // === ФИЛЬТР ТЕСТОВЫХ ПЕРЕВОДОВ ОТ CRYPTOZHENEK ===
-  if (transfer.from === 'cryptozhenek') {
+  if ((transfer.from === 'cryptozhenek') || (transfer.from === 'bot1pr.pcash')) {
     console.log(`[EOS] Skipping test transfer from cryptozhenek (tx: ${transfer.trx_id.substring(0, 8)}...)`)
     return  // полностью прекращаем обработку этой транзакции
   }
@@ -187,7 +187,6 @@ async function processTransfer(transfer: EOSTransfer): Promise<void> {
     const inserted = await insertDecoration(decoration)
     
     if (inserted) {
-      await broadcastDecoration(inserted)
       console.log(`⭐ [EOS] Created star decoration from transfer`)
     }
     return  // Завершаем функцию после создания звезды, чтобы не создавать лишние записи
@@ -210,7 +209,7 @@ async function processTransfer(transfer: EOSTransfer): Promise<void> {
     const inserted = await insertDecoration(decoration)
     
     if (inserted) {
-      await broadcastDecoration(inserted)
+      // Decoration inserted, Realtime will notify clients via postgres_changes
     }
   }
   
@@ -230,6 +229,8 @@ export async function startParser(): Promise<void> {
   console.log(`   Supported contracts: ${SUPPORTED_CONTRACTS.join(', ')}`)
   console.log(`   Account: ${config.eos.account}`)
   console.log(`   API: ${config.eos.hyperionApiUrl}`)
+  // ✅ Инициализируем in-memory кеш перед началом работы
+  await initTxCache()
 
   // Начальная загрузка последних транзакций
   await pollTransactions()
@@ -250,15 +251,26 @@ async function pollTransactions(): Promise<void> {
       return
     }
 
-    console.log(`📥 [EOS] Found ${transfers.length} transfer(s), processing...`)
+    console.log(`📥 [EOS] Found ${transfers.length} transfer(s), filtering duplicates...`)
+    // ✅ Batch-проверка: получаем все tx_id из текущего batch
+    const txIds = transfers.map(t => t.trx_id)
+    const existingTxIds = await checkExistingTxIds(txIds)
+    // ✅ Фильтруем только новые транзакции
+    const newTransfers = transfers.filter(t => !existingTxIds.has(t.trx_id))
+    
+    if (newTransfers.length === 0) {
+      console.log(`⏭️  [EOS] All transfers already processed (${transfers.length} duplicates)`)
+      return
+    }
 
+    console.log(`📥 [EOS] Processing ${newTransfers.length} new transfers (filtered ${transfers.length - newTransfers.length} duplicates)`)
     // Обрабатываем в обратном порядке (старые сначала)
     let processed = 0
-    for (const transfer of transfers.reverse()) {
+    for (const transfer of newTransfers.reverse()) {
       await processTransfer(transfer)
       processed++
     }
-    console.log(`✅ [EOS] Processed ${processed} transfers`)
+    console.log(`✅ [EOS] Processed ${processed} new transfers`)
   } catch (error: any) {
     console.error('❌ [EOS] Error in pollTransactions: ' + error.message)
   }
