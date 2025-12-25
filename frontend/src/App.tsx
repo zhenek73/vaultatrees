@@ -78,6 +78,7 @@ export default function App() {
   const [countdown, setCountdown] = useState(6)
   const [envelopeText, setenvelopeText] = useState('')
   const [isPaymentSuccess, setIsPaymentSuccess] = useState(false)
+  const [selectedToken, setSelectedToken] = useState<'A' | 'EOS'>('A')  // Выбор токена для оплаты
   const [showDonatePanel, setShowDonatePanel] = useState(false)
   const [showLog, setShowLog] = useState(false)
   const [logTab, setLogTab] = useState<'actions' | 'donors'>('actions')
@@ -203,6 +204,17 @@ export default function App() {
             console.log('📡 [Realtime] New decoration inserted:', payload.new)
             const newDecoration = payload.new as Decoration
 
+            // Логи для отладки EOS-украшений (можно удалить позже)
+            if (newDecoration.image_url === 'EOS' || (newDecoration as any).token === 'EOS') {
+              console.log('🎱 [Frontend] New EOS decoration received via Realtime:', {
+                type: newDecoration.type,
+                from: newDecoration.from_account,
+                amount: newDecoration.amount,
+                image_url: newDecoration.image_url,
+                tx_id: newDecoration.tx_id?.substring(0, 16)
+              })
+            }
+
             const newDec = { ...newDecoration, createdAt: Date.now() }
 
             setDecorations(prev => {
@@ -246,6 +258,21 @@ export default function App() {
       console.log('🔄 [App] Loading data...')
       const decs = await fetchDecorations()
       console.log(`✅ [App] Loaded ${decs.length} decorations`)
+      
+      // Логи для отладки EOS-украшений (можно удалить позже)
+      console.log('🎄 [Frontend] All decorations from DB:', decs)
+      const eosDecorations = decs.filter(d => d.image_url === 'EOS' || (d as any).token === 'EOS')
+      console.log('🎄 [Frontend] EOS decorations:', eosDecorations)
+      if (eosDecorations.length > 0) {
+        console.log(`🎱 [Frontend] Found ${eosDecorations.length} EOS decoration(s):`, eosDecorations.map(d => ({
+          type: d.type,
+          from: d.from_account,
+          amount: d.amount,
+          image_url: d.image_url,
+          tx_id: d.tx_id?.substring(0, 16)
+        })))
+      }
+      
       setDecorations(decs)
       setLoading(false)
     } catch (error) {
@@ -258,11 +285,22 @@ export default function App() {
   const stats = useMemo(() => {
     const lights = decorations.filter(d => d.type?.toLowerCase() === 'light').length
     const balls = decorations.filter(d => d.type?.toLowerCase() === 'ball').length
+    const eosBalls = decorations.filter(d => d.type?.toLowerCase() === 'ball' && (d.image_url === 'EOS' || (d as any).token === 'EOS')).length
     const envelopes = decorations.filter(d => d.type?.toLowerCase() === 'candle' || d.type?.toLowerCase() === 'envelope').length
     const total = decorations.length
     
-    console.log('Current decorations for stats:', decorations)
-    console.log('Stats calculated:', { lights, balls, envelopes, total })
+    // Логи для отладки EOS-украшений (можно удалить позже)
+    console.log('🎄 [Frontend] All decorations for stats:', decorations)
+    console.log('📊 [Frontend] Stats calculated:', { lights, balls, eosBalls, envelopes, total })
+    if (eosBalls > 0) {
+      const eosBallsList = decorations.filter(d => d.type?.toLowerCase() === 'ball' && (d.image_url === 'EOS' || (d as any).token === 'EOS'))
+      console.log(`🎱 [Frontend] EOS balls details:`, eosBallsList.map(d => ({
+        from: d.from_account,
+        amount: d.amount,
+        image_url: d.image_url,
+        tx_id: d.tx_id?.substring(0, 16)
+      })))
+    }
     
     return { lights, balls, envelopes, total }
   }, [decorations])
@@ -459,10 +497,28 @@ useEffect(() => {
       throw new Error('Wallet not connected')
     }
 
-    // Vaulta native token A, contract core.vaulta (2025)
     const recipient = Name.from('newyeartrees')
-    const contract = Name.from('core.vaulta')  // Always use Vaulta A token
-    const symbol = 'A'  // Vaulta native token
+    
+    // Определяем контракт и символ токена
+    // Для шарика можно выбрать A или EOS, для остальных - только A
+    let contract: Name
+    let symbol: string
+    
+    if (type === 'ball') {
+      // Для шарика используем выбранный токен
+      if (selectedToken === 'EOS') {
+        contract = Name.from('eosio.token')
+        symbol = 'EOS'
+      } else {
+        contract = Name.from('core.vaulta')
+        symbol = 'A'
+      }
+    } else {
+      // Для остальных украшений - только A токен
+      contract = Name.from('core.vaulta')
+      symbol = 'A'
+    }
+    
     let amount = 0
     let memo = ""
     
@@ -487,7 +543,7 @@ useEffect(() => {
         throw new Error('Invalid decoration type')
     }
 
-    // Create asset with proper format: "amount symbol" (Vaulta A token, 4 decimals)
+    // Create asset with proper format: "amount symbol" (A или EOS token, 4 decimals)
     const quantity = Asset.from(`${amount.toFixed(4)} ${symbol}`)
 
     return {
@@ -607,6 +663,7 @@ useEffect(() => {
     setModalType(null)
     setWaitingForPayment(false)
     setIsPaymentSuccess(false)
+    setSelectedToken('A')  // Сброс выбора токена при закрытии модалки
   }
 
   // Все действия (все украшения)
@@ -748,18 +805,35 @@ useEffect(() => {
      {/* Balls — точное позиционирование */}
 <div className="absolute inset-0 pointer-events-none z-30">
   {(stats.balls + localBalls.length) > 0 && imageBounds && ballPositions.length > 0 && (() => {
-    // Vaulta native token A - always use vaulta ball image
-    const getBallImage = (): string => {
-      // Always use Vaulta ball (A token)
-      return '/ball_vaulta.png'
+    // Определяем изображение шара по токену (A или EOS)
+    const getBallImage = (ball: Decoration | null): string => {
+      if (!ball) {
+        return '/ball_vaulta.png'  // Fallback для локальных шаров
+      }
+      // Проверяем image_url для определения токена
+      if (ball.image_url === 'EOS') {
+        return '/ball_eos.png'  // EOS шар
+      }
+      return '/ball_vaulta.png'  // Vaulta A шар (по умолчанию)
     }
+    
+    // Получаем все шары из decorations (и A, и EOS)
+    const allBalls = decorations.filter(d => d.type?.toLowerCase() === 'ball')
+    
+    // Логи для отладки EOS-украшений (можно удалить позже)
+    console.log(`🎈 [Frontend] Rendering ${allBalls.length} balls (${allBalls.filter(b => b.image_url === 'EOS').length} EOS, ${allBalls.filter(b => b.image_url !== 'EOS').length} A)`)
     
     return Array.from({ length: stats.balls + localBalls.length }, (_, i) => {
       const pos = ballPositions[i % ballPositions.length]
       const isLocal = i >= stats.balls
-      const ball = isLocal ? null : decorations.filter(d => d.type === 'ball')[i]
+      // Используем правильный индекс для шаров из decorations
+      const ball = isLocal ? null : allBalls[i]
       const username = isLocal ? 'Zhenek' : (ball?.username || 'Anonymous')
-      // Vaulta native token A always used
+      
+      // Логируем для диагностики EOS-шаров
+      if (ball && (ball.image_url === 'EOS' || (ball as any).token === 'EOS')) {
+        console.log(`🎱 [Frontend] Rendering EOS ball for ${ball.from_account}, amount: ${ball.amount}, image_url: ${ball.image_url}, image: ${getBallImage(ball)}`)
+      }
 
       const relX = pos.x / 1024
       const relY = pos.y / 2048
@@ -774,7 +848,7 @@ useEffect(() => {
       const screenY = imageBounds.top + adjustedRelY * imageBounds.height + 13
 
       const isFresh = !isLocal && ball?.createdAt && (Date.now() - ball.createdAt) < 60000
-      const ballImage = getBallImage()
+      const ballImage = getBallImage(ball)
 
       return (
         <div
@@ -1193,13 +1267,40 @@ useEffect(() => {
                     {modalType === 'envelope' && '🕯️ Light Candle'}
                   </h2>
                   
-                  <p className="text-pink-300 text-center mb-6">
+                  <p className="text-pink-300 text-center mb-4">
                     {modalType === 'light' && '0.2 A'}
-                    {modalType === 'ball' && '2 A'}
+                    {modalType === 'ball' && `2 ${selectedToken}`}
                     {modalType === 'envelope' && '20 A'}
                   </p>
 
-                  {/* Vaulta native token A always used */}
+                  {/* Выбор токена только для шарика */}
+                  {modalType === 'ball' && (
+                    <div className="mb-6">
+                      <p className="text-gray-400 text-sm text-center mb-3">Select payment token:</p>
+                      <div className="flex gap-3 justify-center">
+                        <button
+                          onClick={() => setSelectedToken('A')}
+                          className={`px-6 py-3 rounded-lg font-bold transition-all duration-300 ${
+                            selectedToken === 'A'
+                              ? 'bg-gradient-to-r from-yellow-500 to-orange-500 text-white shadow-lg scale-105'
+                              : 'bg-black/40 text-gray-400 hover:bg-black/60 border border-gray-600'
+                          }`}
+                        >
+                          A (Vaulta)
+                        </button>
+                        <button
+                          onClick={() => setSelectedToken('EOS')}
+                          className={`px-6 py-3 rounded-lg font-bold transition-all duration-300 ${
+                            selectedToken === 'EOS'
+                              ? 'bg-gradient-to-r from-blue-500 to-purple-500 text-white shadow-lg scale-105'
+                              : 'bg-black/40 text-gray-400 hover:bg-black/60 border border-gray-600'
+                          }`}
+                        >
+                          EOS
+                        </button>
+                      </div>
+                    </div>
+                  )}
 
                   {modalType === 'envelope' && (
                     <div className="mb-4">
@@ -1220,18 +1321,26 @@ useEffect(() => {
                       <span className="text-gray-400">To:</span>
                       <span className="text-white font-mono">newyeartrees</span>
                     </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-gray-400">Amount:</span>
-                      <span className="text-pink-300 font-bold">
-                        {modalType === 'light' && '0.2'}
-                        {modalType === 'ball' && '2'}
-                        {modalType === 'envelope' && '20'}
-                      </span>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-gray-400">Token:</span>
-                      <span className="text-yellow-300 font-mono">A</span>
-                    </div>
+              <div className="flex justify-between items-center">
+                <span className="text-gray-400">Amount:</span>
+                <span className="text-pink-300 font-bold">
+                  {modalType === 'light' && '0.2'}
+                  {modalType === 'ball' && '2'}
+                  {modalType === 'envelope' && '20'}
+                </span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-gray-400">Token:</span>
+                <span className="text-yellow-300 font-mono">
+                  {modalType === 'ball' ? selectedToken : 'A'}
+                </span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-gray-400">Contract:</span>
+                <span className="text-yellow-300 font-mono text-xs">
+                  {modalType === 'ball' && selectedToken === 'EOS' ? 'eosio.token' : 'core.vaulta'}
+                </span>
+              </div>
                     <div className="flex justify-between items-center">
                       <span className="text-gray-400">Memo:</span>
                       <span className="text-yellow-300 font-mono text-xs break-all text-right">
@@ -1313,37 +1422,48 @@ useEffect(() => {
               allActions.length === 0 ? (
                 <p className="text-gray-400 text-center">No actions yet</p>
               ) : (
-                allActions.map((dec, i) => (
-                  <div
-                    key={`log-${i}`}
-                    className="bg-black/40 rounded-lg p-3 text-sm"
-                  >
-                    <div className="flex justify-between items-start">
-                      <div className="flex-1">
-                        <div className="text-yellow-400 font-bold">
-                          {dec.type === 'light' && `💡 Lit 1 light(s)! Amount: ${dec.amount || '0.2000'} A`}
-                          {dec.type === 'ball' && '🎈 Ball'}
-                          {(dec.type === 'candle' || dec.type === 'envelope') && '🕯️ Candle'}
-                          {dec.type === 'star' && (
-                            <>
-                              ⭐ {dec.username || dec.from_account} placed a bid to light the star for New Year! 🎉
-                              {(typeof dec.amount === 'number' ? dec.amount : parseFloat(dec.amount || '0')) === currentBid && ' (current leader!)'}
-                            </>
-                          )}
-                        </div>
-                        <div className="text-white mt-1">
-                          From: {dec.from_account}
-                        </div>
-                        <div className="text-pink-300 text-xs mt-1">
-                          Amount: {(() => {
-                            const amt = typeof dec.amount === 'number' ? dec.amount : parseFloat(String(dec.amount || '0'))
-                            return amt.toFixed(4)
-                          })()} A
+                allActions.map((dec, i) => {
+                  // Логи для отладки EOS-украшений (можно удалить позже)
+                  if (dec.type === 'ball' && (dec.image_url === 'EOS' || (dec as any).token === 'EOS')) {
+                    console.log(`🎱 [Frontend] Rendering EOS ball in action log for ${dec.from_account}, amount: ${dec.amount}, image_url: ${dec.image_url}`)
+                  }
+                  
+                  return (
+                    <div
+                      key={`log-${i}`}
+                      className="bg-black/40 rounded-lg p-3 text-sm"
+                    >
+                      <div className="flex justify-between items-start">
+                        <div className="flex-1">
+                          <div className="text-yellow-400 font-bold">
+                            {dec.type === 'light' && `💡 Lit 1 light(s)! Amount: ${dec.amount || '0.2000'} A`}
+                            {dec.type === 'ball' && (
+                              <>
+                                🎈 Ball {dec.image_url === 'EOS' ? '(EOS)' : '(A)'}
+                              </>
+                            )}
+                            {(dec.type === 'candle' || dec.type === 'envelope') && '🕯️ Candle'}
+                            {dec.type === 'star' && (
+                              <>
+                                ⭐ {dec.username || dec.from_account} placed a bid to light the star for New Year! 🎉
+                                {(typeof dec.amount === 'number' ? dec.amount : parseFloat(dec.amount || '0')) === currentBid && ' (current leader!)'}
+                              </>
+                            )}
+                          </div>
+                          <div className="text-white mt-1">
+                            From: {dec.from_account}
+                          </div>
+                          <div className="text-pink-300 text-xs mt-1">
+                            Amount: {(() => {
+                              const amt = typeof dec.amount === 'number' ? dec.amount : parseFloat(String(dec.amount || '0'))
+                              return amt.toFixed(4)
+                            })()} A
+                          </div>
                         </div>
                       </div>
                     </div>
-                  </div>
-                ))
+                  )
+                })
               )
             ) : (
               topDonors.length === 0 ? (

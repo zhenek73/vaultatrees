@@ -14,8 +14,9 @@ export const config = {
   
   eos: {
     // Vaulta native token A, contract core.vaulta (2025)
-    // Default contracts: core.vaulta for A token
-    contracts: (process.env.EOS_CONTRACTS || 'core.vaulta').split(',').map((c: string) => c.trim()),
+    // EOS token, contract eosio.token
+    // Default contracts: core.vaulta for A token, eosio.token for EOS token
+    contracts: (process.env.EOS_CONTRACTS || 'core.vaulta,eosio.token').split(',').map((c: string) => c.trim()),
     account: process.env.EOS_ACCOUNT || 'newyeartrees',
     hyperionApiUrl: process.env.HYPERION_API_URL || 'https://eos.hyperion.eosrio.io/v2'
   }

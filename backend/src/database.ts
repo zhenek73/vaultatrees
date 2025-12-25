@@ -81,7 +81,7 @@ export async function insertDecoration(decoration: Decoration, skipDeduplication
       tx_id: cleanTxId  // Используем нормализованный tx_id
     }
     
-    console.log(`💾 [DB] Inserting decoration: type=${decorationToInsert.type}, from=${decorationToInsert.from_account}, tx_id=${cleanTxId.substring(0, 16)}...`)
+    console.log(`💾 [DB] Inserting decoration: type=${decorationToInsert.type}, from=${decorationToInsert.from_account}, tx_id=${cleanTxId.substring(0, 16)}..., image_url=${decorationToInsert.image_url || 'none'}`)
 
     // Используем supabaseAdmin для записи (если доступен), иначе обычный supabase
     const client = supabaseAdmin || supabase
@@ -103,7 +103,7 @@ export async function insertDecoration(decoration: Decoration, skipDeduplication
       return null
     }
 
-    console.log(`✅ Decoration inserted: ${decoration.type} from ${decoration.from_account}, tx_id=${cleanTxId.substring(0, 16)}...`)
+    console.log(`✅ Decoration inserted: ${decoration.type} from ${decoration.from_account}, tx_id=${cleanTxId.substring(0, 16)}..., image_url=${data?.image_url || 'none'}`)
     
     // ✅ Добавляем tx_id в кеш после успешной вставки
     processedTxCache.add(cleanTxId)

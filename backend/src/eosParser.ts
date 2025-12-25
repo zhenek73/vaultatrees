@@ -79,7 +79,7 @@ async function fetchTransfers(limit: number = 100): Promise<EOSTransfer[]> {
                 contract: String(contract || '').trim()  // сохраняем контракт для определения токена
               })
               
-              console.log(`📥 [Vaulta] Found transfer from ${contract}: ${quantity} from ${data.from}, memo: "${data.memo}"`)
+              console.log(`📥 [Vaulta] Found transfer from contract ${contract}: ${quantity} from ${data.from}, memo: "${data.memo}", tx_id: ${txId.substring(0, 16)}...`)
           }
         }
       }
@@ -121,7 +121,7 @@ function parseTransfer(transfer: EOSTransfer): { type: DecorationType | null; co
     }
   }
   
-  // Ровно 2 → шарик (ball)
+  // Ровно 2 → шарик (ball) - проверяем ДО проверки на ≥1 для звезды
   if (Math.abs(amount - 2) < 0.0001) {
     return { 
       type: 'ball', 
@@ -137,8 +137,9 @@ function parseTransfer(transfer: EOSTransfer): { type: DecorationType | null; co
     }
   }
   
-  // ≥1 → участие в аукционе звезды (type = 'star')
-  if (amount >= 1) {
+  // ≥1 (но не 2 и не 20) → участие в аукционе звезды (type = 'star')
+  // Важно: проверяем после проверки на 2, чтобы сумма ровно 2 не попадала в звезду
+  if (amount >= 1 && Math.abs(amount - 2) >= 0.0001 && Math.abs(amount - 20) >= 0.0001) {
     return { 
       type: 'star',
       username: transfer.from
@@ -165,8 +166,8 @@ async function processTransfer(transfer: EOSTransfer): Promise<void> {
     return
   }
   
-  console.log(`✅ [Vaulta] Parsed transfer as type: ${parsed.type} (amount: ${transfer.quantity})`)
-  console.log('Parsed decoration:', { type: parsed.type, amount: transfer.quantity, from: transfer.from })
+  console.log(`✅ [Vaulta] Parsed transfer as type: ${parsed.type} (amount: ${transfer.quantity}, contract: ${transfer.contract})`)
+  console.log('Parsed decoration:', { type: parsed.type, amount: transfer.quantity, from: transfer.from, contract: transfer.contract })
 
   // Vaulta native token A, contract core.vaulta (2025)
   // Парсим amount из quantity (формат "0.2000 A" или "2.0000 A" и т.д.)
@@ -176,9 +177,15 @@ async function processTransfer(transfer: EOSTransfer): Promise<void> {
   // A токен имеет precision 4
   const precision = amountStr.includes('.') ? amountStr.split('.')[1].length : 4
   
-  // Vaulta native token A, contract core.vaulta (2025)
-  // Определяем токен по контракту: только core.vaulta = A
-  const token = transfer.contract === 'core.vaulta' ? 'A' : undefined
+  // Определяем токен по контракту: core.vaulta = A, eosio.token = EOS
+  let token: string | undefined
+  if (transfer.contract === 'core.vaulta') {
+    token = 'A'
+  } else if (transfer.contract === 'eosio.token') {
+    token = 'EOS'
+  }
+  
+  console.log(`📦 [Vaulta] Parsed transfer from contract: ${transfer.contract}, as type: ${parsed.type}, token: ${token || 'unknown'}`)
   
   // Для звезды создаём одну запись с полной суммой
   if (parsed.type === 'star') {
@@ -189,6 +196,14 @@ async function processTransfer(transfer: EOSTransfer): Promise<void> {
       return
     }
     
+    // Для звезды определяем image_url по токену
+    let imageUrl: string | undefined
+    if (token === 'EOS') {
+      imageUrl = 'EOS'
+    } else if (token === 'A') {
+      imageUrl = 'A'
+    }
+    
     const decoration: Decoration = {
       type: 'star',
       from_account: transfer.from,
@@ -196,13 +211,15 @@ async function processTransfer(transfer: EOSTransfer): Promise<void> {
       text: undefined,
       amount: amount.toFixed(precision),
       tx_id: cleanTxId,
-      image_url: token  // Vaulta native token A
+      image_url: imageUrl  // 'A' для Vaulta A token, 'EOS' для EOS token
     }
 
     const inserted = await insertDecoration(decoration, FORCE_REPROCESS_ALL)
     
     if (inserted) {
-      console.log(`⭐ [Vaulta] Created star decoration from transfer (amount: ${amount.toFixed(precision)} A)`)
+      console.log(`⭐ [Vaulta] Created star decoration from transfer (amount: ${amount.toFixed(precision)} ${token || 'unknown'}, contract: ${transfer.contract}, image_url: ${imageUrl || 'none'})`)
+    } else {
+      console.log(`⚠️  [Vaulta] Failed to insert star decoration (duplicate or error)`)
     }
     return  // Завершаем функцию после создания звезды, чтобы не создавать лишние записи
   }
@@ -217,6 +234,18 @@ async function processTransfer(transfer: EOSTransfer): Promise<void> {
     return
   }
   
+  // Для EOS-шаров используем специальный тип в image_url для отличия от A-шаров
+  let imageUrl: string | undefined
+  if (token === 'EOS') {
+    // Для EOS токена всегда ставим маркер EOS (для шаров, звезд и т.д.)
+    imageUrl = 'EOS'
+  } else if (token === 'A') {
+    // Для A токена ставим маркер A
+    imageUrl = 'A'
+  }
+  
+  console.log(`🎨 [Vaulta] Setting image_url: ${imageUrl || 'none'} for ${parsed.type} decoration (token: ${token || 'unknown'}, contract: ${transfer.contract})`)
+  
   for (let i = 0; i < count; i++) {
     const decoration: Decoration = {
       type: parsed.type.toLowerCase() as DecorationType,
@@ -225,13 +254,16 @@ async function processTransfer(transfer: EOSTransfer): Promise<void> {
       text: parsed.type === 'candle' ? (parsed.text || undefined) : undefined,
       amount: amount.toFixed(precision),
       tx_id: cleanTxId,
-      image_url: token  // Vaulta native token A
+      image_url: imageUrl  // 'A' для Vaulta A token, 'EOS' для EOS token
     }
 
     const inserted = await insertDecoration(decoration, FORCE_REPROCESS_ALL)
     
     if (inserted) {
+      console.log(`✅ [Vaulta] Created ${parsed.type} decoration from ${token || 'unknown'} token (amount: ${amount.toFixed(precision)} ${token || ''}, image_url: ${imageUrl || 'none'})`)
       // Decoration inserted, Realtime will notify clients via postgres_changes
+    } else {
+      console.log(`⚠️  [Vaulta] Failed to insert ${parsed.type} decoration (duplicate or error)`)
     }
   }
   
@@ -310,6 +342,7 @@ async function pollTransactions(): Promise<void> {
     // Обрабатываем в обратном порядке (старые сначала)
     let processed = 0
     for (const transfer of newTransfers.reverse()) {
+      console.log(`🔄 [Vaulta] Processing transfer ${processed + 1}/${newTransfers.length}: contract=${transfer.contract}, amount=${transfer.quantity}, from=${transfer.from}, tx_id=${transfer.trx_id.substring(0, 16)}...`)
       await processTransfer(transfer)
       processed++
     }
