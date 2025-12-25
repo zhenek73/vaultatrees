@@ -1,4 +1,4 @@
-import { FC, useState } from 'react'
+import { FC, useState, type CSSProperties } from 'react'
 
 const snowflakes = ['❄️', '❅', '⋆'] as const
 
@@ -61,7 +61,7 @@ const Snowfall: FC<SnowfallProps> = ({ onBurst }) => {
               animationTimingFunction: isBurst ? 'ease-out' : 'linear',
               animationIterationCount: isBurst ? 1 : 'infinite',
               animationFillMode: isBurst ? 'forwards' : 'none',
-            } as React.CSSProperties}
+            } as CSSProperties}
           >
             {symbol}
           </div>

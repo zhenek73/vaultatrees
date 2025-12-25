@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo, useRef, Suspense } from 'react'
+import { useEffect, useState, useMemo, useRef, Suspense, lazy, type ChangeEvent } from 'react'
 import { Sparkles, X } from 'lucide-react'
 import { fetchDecorations, fetchTopDonors } from './api'
 import { Decoration, TopDonor } from './types'
@@ -6,7 +6,7 @@ import { getSupabaseClient } from './api'
 import { useWallet } from './wallet/WalletContext'
 import { Name, Asset } from '@wharfkit/antelope'
 
-const Snowfall = React.lazy(() => import('./components/Snowfall'))
+const Snowfall = lazy(() => import('./components/Snowfall'))
 
 interface Position {
   x: number
@@ -295,7 +295,7 @@ export default function App() {
   const minBid = currentBid + 0.0001
 
   // Обработчик изменения ставки
-  const handleBidChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleBidChange = (e: ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value
     setBidAmount(value)
     if (value && parseFloat(value) <= currentBid) {
