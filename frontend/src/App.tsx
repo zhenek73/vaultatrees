@@ -1,9 +1,10 @@
 import React, { useEffect, useState, useMemo, useRef, Suspense } from 'react'
 import { Sparkles, X } from 'lucide-react'
-import { QRCodeSVG } from 'qrcode.react'
 import { fetchDecorations, fetchTopDonors } from './api'
 import { Decoration, TopDonor } from './types'
 import { getSupabaseClient } from './api'
+import { useWallet } from './wallet/WalletContext'
+import { Name, Asset } from '@wharfkit/antelope'
 
 const Snowfall = React.lazy(() => import('./components/Snowfall'))
 
@@ -12,7 +13,7 @@ interface Position {
   y: number
 }
 
-type ModalType = 'light' | 'ball' | 'envelope' | 'gift' | 'star' | null
+type ModalType = 'light' | 'ball' | 'envelope' | 'star' | null
 
 // Список ярких цветов для огоньков
 const LIGHT_COLORS = [
@@ -28,6 +29,9 @@ const LIGHT_COLORS = [
 ]
 
 export default function App() {
+  // Wallet context
+  const { session, isLoading: walletLoading, login, logout, switchAccount, account } = useWallet()
+
   //const [decorations, setDecorations] = useState<Decoration[]>([])
 
   const [decorations, setDecorations] = useState<Decoration[]>(() => {
@@ -73,7 +77,6 @@ export default function App() {
   const [waitingForPayment, setWaitingForPayment] = useState(false)
   const [countdown, setCountdown] = useState(6)
   const [envelopeText, setenvelopeText] = useState('')
-  const [giftUrl, setGiftUrl] = useState('')
   const [showDonatePanel, setShowDonatePanel] = useState(false)
   const [showLog, setShowLog] = useState(false)
   const [logTab, setLogTab] = useState<'actions' | 'donors'>('actions')
@@ -88,6 +91,9 @@ export default function App() {
   const [localBalls, setLocalBalls] = useState<number[]>([])       // индексы локальных шариков
   const [localEnvelopes, setLocalEnvelopes] = useState<number[]>([]) // индексы локальных открыток
   const [showBurstCounter, setShowBurstCounter] = useState(false)  // видимость счётчика снежинок
+  // Vaulta native token A, contract core.vaulta (2025)
+  // Removed token selection - always use A token
+  const [isTransacting, setIsTransacting] = useState(false)  // состояние отправки транзакции
 
   // Обработка лопания снежинки
   const handleBurst = () => {
@@ -254,9 +260,8 @@ export default function App() {
       .reduce((sum, d) => sum + (typeof d.amount === 'number' ? d.amount : parseFloat(d.amount || '0')), 0)
     const balls = decorations.filter(d => d.type?.toLowerCase() === 'ball').length
     const envelopes = decorations.filter(d => d.type?.toLowerCase() === 'candle' || d.type?.toLowerCase() === 'envelope').length
-    const gifts = decorations.filter(d => d.type?.toLowerCase() === 'gift').length
     const total = decorations.length
-    return { lights: Math.floor(lightsAmount), balls, envelopes, gifts, total }
+    return { lights: Math.floor(lightsAmount), balls, envelopes, total }
   }, [decorations])
 
 
@@ -283,15 +288,15 @@ export default function App() {
     return uniqueBids
   }, [decorations])
 
-  const currentBid = starBids.length > 0 ? (typeof starBids[0].amount === 'number' ? starBids[0].amount : parseFloat(starBids[0].amount || '0')) : 1000  // минимум 1001, но считаем от 1000
-  const minBid = currentBid + 1
+  const currentBid = starBids.length > 0 ? (typeof starBids[0].amount === 'number' ? starBids[0].amount : parseFloat(starBids[0].amount || '0')) : 100  // минимум 100
+  const minBid = currentBid + 0.0001
 
   // Обработчик изменения ставки
   const handleBidChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value
     setBidAmount(value)
     if (value && parseFloat(value) <= currentBid) {
-      setBidError(`Сумма должна быть выше текущей ставки (${currentBid.toFixed(6)} MLNK)`)
+      setBidError(`Amount must be higher than current bid (${currentBid.toFixed(4)} A)`)
     } else {
       setBidError('')
     }
@@ -304,7 +309,7 @@ export default function App() {
       const now = new Date()
       const diff = auctionEnd.getTime() - now.getTime()
       if (diff <= 0) {
-        setTimeLeft('Аукцион завершён')
+        setTimeLeft('Auction ended')
         setAuctionEnded(true)
         return
       }
@@ -312,7 +317,7 @@ export default function App() {
       const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60))
       const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60))
       const seconds = Math.floor((diff % (1000 * 60)) / 1000)
-      setTimeLeft(`${days}д ${hours}ч ${minutes}м ${seconds}с`)
+      setTimeLeft(`${days}d ${hours}h ${minutes}m ${seconds}s`)
     }
     updateTimer() // Вызываем сразу для немедленного отображения
     const timer = setInterval(updateTimer, 1000)
@@ -443,68 +448,55 @@ useEffect(() => {
   
   
 
-  // Генерация позиций для украшений (шарики, свечи, подарки)
-  const decorationPositions = useMemo(() => {
-    const positions: Map<number, Position> = new Map()
-    decorations.forEach((dec, index) => {
-      if (dec.type?.toLowerCase() !== 'light' && !positions.has(index)) {
-        // Случайные позиции на ветках
-        positions.set(index, {
-          x: 80 + (index % 5) * 40 + Math.random() * 20,
-          y: 150 + Math.floor(index / 5) * 60 + Math.random() * 30
-        })
-      }
-    })
-    return positions
-  }, [decorations])
+  // Note: decorationPositions removed - balls and candles use fixed positions from JSON files
 
-  // Генерация QR-кода в JSON формате для PayCash
-  const getQRCodeData = (type: ModalType): string => {
-    const baseData = {
-      symbol: "MLNK",
-      address: "malinkatrees",
-      precision: 6,
-      contract: "swap.pcash",
-      protocol: "ScanProtocol",
-      action: "transfer",
-      memo: "",
-      amount: 0
+  // Create transaction action for Wharfkit
+  const createTransferAction = async (type: ModalType) => {
+    if (!session) {
+      throw new Error('Wallet not connected')
     }
+
+    // Vaulta native token A, contract core.vaulta (2025)
+    const recipient = Name.from('newyeartrees')
+    const contract = Name.from('core.vaulta')  // Always use Vaulta A token
+    const symbol = 'A'  // Vaulta native token
+    let amount = 0
+    let memo = ""
     
     switch (type) {
       case 'light':
-        return JSON.stringify({
-          ...baseData,
-          amount: 1.000000,
-          memo: ""
-        })
+        amount = 0.2
+        memo = ""
+        break
       case 'ball':
-        return JSON.stringify({
-          ...baseData,
-          amount: 10.000000,
-          memo: ""
-        })
+        amount = 2
+        memo = ""
+        break
       case 'envelope':
-        return JSON.stringify({
-          ...baseData,
-          amount: 100.000000,
-          memo: envelopeText.trim().substring(0, 200) || ""
-        })
-      case 'gift':
-        return JSON.stringify({
-          ...baseData,
-          amount: 1000.000000,
-          memo: giftUrl.trim() || ""
-        })
+        amount = 20
+        memo = envelopeText.trim().substring(0, 200) || ""
+        break
       case 'star':
-        const amount = parseFloat(bidAmount) || minBid
-        return JSON.stringify({
-          ...baseData,
-          amount: amount.toFixed(6),
-          memo: "звезда"
-        })
+        amount = parseFloat(bidAmount) || minBid
+        memo = "star"
+        break
       default:
-        return ''
+        throw new Error('Invalid decoration type')
+    }
+
+    // Create asset with proper format: "amount symbol" (Vaulta A token, 4 decimals)
+    const quantity = Asset.from(`${amount.toFixed(4)} ${symbol}`)
+
+    return {
+      account: contract,
+      name: Name.from('transfer'),
+      authorization: [session.permissionLevel],
+      data: {
+        from: session.actor,
+        to: recipient,
+        quantity: quantity,
+        memo: memo
+      }
     }
   }
 
@@ -512,23 +504,88 @@ useEffect(() => {
     setModalType(type)
     setWaitingForPayment(false)
     setShowDonatePanel(false)
+    // Vaulta native token A always used
     if (type === 'envelope') setenvelopeText('')
-    if (type === 'gift') setGiftUrl('')
     if (type === 'star') {
       setBidAmount('')
       setBidError('')
     }
   }
 
-  const handlePaymentDone = () => {
-    setWaitingForPayment(true)
-    setModalType(null)
-    // Ждём 8–10 секунд (время подтверждения в EOS + парсер) и подтягиваем свежие данные
-    setTimeout(async () => {
-      await loadData()  // принудительно обновляем decorations
+  const handlePaymentDone = async () => {
+    if (!session || !modalType) {
+      return
+    }
+
+    try {
+      setIsTransacting(true)
+      setWaitingForPayment(true)
+      setModalType(null)
+
+      const action = await createTransferAction(modalType)
+
+      // ===== WHARFKIT / ANCHOR DEBUG =====
+      if (!session) {
+        console.error('❌ session is null')
+        alert('Session is null! Please reconnect wallet.')
+        setIsTransacting(false)
+        setWaitingForPayment(false)
+        return
+      }
+
+      console.log('=== WHARFKIT DEBUG START ===')
+      console.log('walletPlugin.id:', session.walletPlugin?.id)
+      console.log('walletPlugin:', session.walletPlugin)
+      console.log('actor:', session.actor?.toString())
+      console.log('permission:', session.permission?.toString())
+      console.log('chainId:', session.chain?.id)
+      console.log('action:', JSON.stringify(action, null, 2))
+      console.log('=== WHARFKIT DEBUG END ===')
+      // ==================================
+
+      // Для Telegram Mini App: если deep link заблокирован, используйте "Sign manually" для QR
+      console.log('=== TRANSACT START ===')
+      const startedAt = Date.now()
+
+      let result
+      try {
+        result = await session.transact({ action })
+        console.log('TRANSACT RESULT:', result)
+      } catch (e) {
+        console.error('TRANSACT ERROR:', e)
+        throw e
+      } finally {
+        console.log('TRANSACT FINISHED AFTER', Date.now() - startedAt, 'ms')
+        console.log('=== TRANSACT END ===')
+      }
+
+      console.log('✅ [App] Transaction successful:', result)
+      
+      // Wait for transaction to be processed (Vaulta block time + parser delay)
+      setTimeout(async () => {
+        await loadData()  // Force refresh decorations
+        setWaitingForPayment(false)
+        setIsTransacting(false)
+        console.log('✅ [App] Forced reload after transaction')
+      }, 10000)  // 10 seconds — enough for Vaulta block + parser
+    } catch (error: any) {
+      console.error('❌ [App] Transaction error:', error)
       setWaitingForPayment(false)
-      console.log('✅ [App] Forced reload after payment')
-    }, 10000)  // 10 секунд — достаточно для EOS блока + парсера
+      setIsTransacting(false)
+      
+      // User-friendly error messages
+      let errorMessage = 'Transaction failed. Please try again.'
+      const errorStr = error.message || error.toString() || ''
+      if (errorStr.includes('does not exist') || errorStr.includes('not found')) {
+        errorMessage = 'Wrong token contract. Using Vaulta A token?'
+      } else if (errorStr.includes('insufficient')) {
+        errorMessage = 'Insufficient balance. Please check your account.'
+      } else if (errorStr) {
+        errorMessage = `Transaction failed: ${errorStr}`
+      }
+      
+      alert(errorMessage)
+    }
   }
 
   const handleCloseModal = () => {
@@ -667,14 +724,21 @@ useEffect(() => {
         })()}
       </div>
       
-     {/* Шарики — точное позиционирование */}
+     {/* Balls — точное позиционирование */}
 <div className="absolute inset-0 pointer-events-none z-30">
-  {(stats.balls + localBalls.length) > 0 && imageBounds && ballPositions.length > 0 && (
-    Array.from({ length: stats.balls + localBalls.length }, (_, i) => {
+  {(stats.balls + localBalls.length) > 0 && imageBounds && ballPositions.length > 0 && (() => {
+    // Vaulta native token A - always use vaulta ball image
+    const getBallImage = (): string => {
+      // Always use Vaulta ball (A token)
+      return '/ball_vaulta.png'
+    }
+    
+    return Array.from({ length: stats.balls + localBalls.length }, (_, i) => {
       const pos = ballPositions[i % ballPositions.length]
       const isLocal = i >= stats.balls
       const ball = isLocal ? null : decorations.filter(d => d.type === 'ball')[i]
-      const username = isLocal ? 'Zhenek' : (ball?.username || 'Аноним')
+      const username = isLocal ? 'Zhenek' : (ball?.username || 'Anonymous')
+      // Vaulta native token A always used
 
       const relX = pos.x / 1024
       const relY = pos.y / 2048
@@ -689,6 +753,7 @@ useEffect(() => {
       const screenY = imageBounds.top + adjustedRelY * imageBounds.height + 13
 
       const isFresh = !isLocal && ball?.createdAt && (Date.now() - ball.createdAt) < 60000
+      const ballImage = getBallImage()
 
       return (
         <div
@@ -709,8 +774,8 @@ useEffect(() => {
           }}
         >
           <img
-            src="/malinka-ball.svg"
-            alt="Шарик"
+            src={ballImage}
+            alt="Ball"
             style={{
               width: imageBounds ? `${imageBounds.width * (isFresh ? 0.09375 : 0.075)}px` : (isFresh ? '60px' : '48px'),
               height: 'auto',
@@ -725,7 +790,7 @@ useEffect(() => {
         </div>
       )
     })
-  )}
+  })()}
   {/* Открытки (конверты) — фиксированные позиции через imageBounds */}
   {/*объединил шарики и открытки в один слой. пока не ясно чем это грозит если что было так
   
@@ -788,33 +853,9 @@ useEffect(() => {
       )
     })
   )}
-</div>
+      </div>
       
-      {/* Гифки - полноразмерные */}
-      {decorations
-        .filter(d => d.type?.toLowerCase() === 'gift')
-        .map((_, i) => {
-          const pos = decorationPositions.get(i)
-          if (!pos) return null
-          return (
-            <img
-              key={`gift-${i}`}
-              src=""
-              alt="Gift"
-              className="gift-gif absolute"
-              style={{
-                left: `${(pos.x / 320) * 100}%`,
-                top: `${(pos.y / 400) * 100}%`,
-                width: '80px',
-                height: '80px',
-                transform: 'translate(-50%, -50%)',
-                zIndex: 30
-              }}
-            />
-          )
-        })}
-      
-      {/* Сияющая пятиконечная звезда на макушке */}
+      {/* Shining five-pointed star on top */}
       {imageBounds && (
         <div 
           className="group absolute left-1/2 z-45"
@@ -852,7 +893,7 @@ useEffect(() => {
         </div>
           <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-4 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-[100]">
             <div className="bg-yellow-400 text-black text-sm font-bold px-4 py-2 rounded-lg shadow-lg whitespace-nowrap">
-              {localLights.length >= 100 && !auctionEnded ? 'Поздравляю! Ты зажёг звезду!' : (starBids.length > 0 ? `Звезду зажёг ${starBids[0].username || starBids[0].from_account}! С Новым годом, друзья!` : 'победитель! С Новым годом, друзья!')}
+              {localLights.length >= 100 && !auctionEnded ? 'Congratulations! You lit the star!' : (starBids.length > 0 ? `${starBids[0].username || starBids[0].from_account} lit the star! Happy New Year!` : 'Winner! Happy New Year!')}
             </div>
             <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-1 w-0 h-0 border-l-8 border-r-8 border-t-8 border-transparent border-t-yellow-400"></div>
           </div>
@@ -860,67 +901,127 @@ useEffect(() => {
       )}
 
 
-      {/* Кнопка "Украсить ёлку" внизу (поднята выше) */}
+      {/* Decorate Tree button at bottom */}
       <div className="absolute left-1/2 -translate-x-1/2 z-40 w-full px-4" style={{ bottom: 'max(16px, env(safe-area-inset-bottom, var(--tg-content-safe-area-inset-bottom, 20px)))' }}>
         {!showDonatePanel ? (
           <button
             onClick={() => setShowDonatePanel(true)}
             className="w-full bg-gradient-to-r from-pink-600 to-purple-600 text-white font-bold py-4 px-8 rounded-full text-xl shadow-2xl hover:scale-105 transition"
           >
-            🎄 Украсить ёлку
+            🎄 Decorate Tree
           </button>
         ) : (
           <div className="bg-black/80 backdrop-blur-sm rounded-2xl p-4 space-y-2">
-            {/* Кнопки доната */}
-            <button 
-              onClick={() => handleOpenModal('light')}
-              className="w-full bg-gradient-to-r from-pink-600 to-purple-600 text-white font-bold py-3 px-6 rounded-full text-lg shadow-xl hover:scale-105 transition"
-            >
-              💡 Огонёк (1 MLNK)
-            </button>
-            
-            <button 
-              onClick={() => handleOpenModal('ball')}
-              className="w-full bg-gradient-to-r from-blue-600 to-cyan-600 text-white font-bold py-3 px-6 rounded-full text-lg shadow-xl hover:scale-105 transition flex items-center justify-center gap-2"
-            >
-              <img src="/malinka-ball.svg" className="w-8 h-8" alt="Шарик" />
-              Шарик (10 MLNK)
-            </button>
-            
-            <button 
-              onClick={() => handleOpenModal('envelope')}
-              className="w-full bg-gradient-to-r from-yellow-500 via-amber-500 to-yellow-600 text-white font-bold py-3 px-6 rounded-full text-lg shadow-xl hover:scale-105 transition flex items-center justify-center gap-2"
-            >
-              <img src="/envelope.png" className="w-6 h-8" alt="Открытка" />
-              Открытка (100 MLNK)
-            </button>
-            
-            <button 
-              onClick={() => handleOpenModal('star')}
-              disabled={auctionEnded}
-              className={`w-full text-white font-bold py-3 px-6 rounded-full text-lg shadow-xl transition ${
-                auctionEnded 
-                  ? 'bg-gray-600 cursor-not-allowed opacity-50' 
-                  : 'bg-gradient-to-r from-yellow-600 to-orange-600 hover:scale-105 animate-pulse-slow'
-              }`}
-            >
-              ⭐ Зажечь звезду (∞ MLNK)
-            </button>
+            {/* Wallet section - Connect Wallet or Account info */}
+            {!session ? (
+              <button
+                onClick={login}
+                disabled={walletLoading}
+                className="w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white font-bold py-3 px-6 rounded-lg text-lg shadow-xl hover:scale-105 transition disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {walletLoading ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                    <span>Connecting...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>🔗</span>
+                    <span>Connect Wallet</span>
+                  </>
+                )}
+              </button>
+            ) : (
+              <div className="bg-gradient-to-r from-green-600/30 to-blue-600/30 rounded-lg p-3 border border-green-500/50">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-green-400 text-sm">✓</span>
+                    <span className="text-white text-sm font-bold">Account:</span>
+                    <span className="text-yellow-300 text-sm font-mono">{account}</span>
+                  </div>
+                  <div className="flex gap-1">
+                    <button
+                      onClick={switchAccount}
+                      disabled={walletLoading}
+                      className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-2 py-1 rounded transition disabled:opacity-50"
+                      title="Switch Account"
+                    >
+                      🔄
+                    </button>
+                    <button
+                      onClick={logout}
+                      disabled={walletLoading}
+                      className="bg-red-600 hover:bg-red-700 text-white text-xs font-bold px-2 py-1 rounded transition disabled:opacity-50"
+                      title="Disconnect"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
 
-            {/* Кнопка открытия лога */}
+            {/* Decoration buttons */}
+            <div className="border-t border-gray-700 pt-2 mt-2 space-y-2">
+              <button 
+                onClick={() => handleOpenModal('light')}
+                disabled={!session || isTransacting}
+                className={`w-full bg-gradient-to-r from-pink-600 to-purple-600 text-white font-bold py-3 px-6 rounded-full text-lg shadow-xl transition ${
+                  !session || isTransacting ? 'opacity-50 cursor-not-allowed' : 'hover:scale-105'
+                }`}
+              >
+                💡 Light (0.2 A)
+              </button>
+              
+              <button 
+                onClick={() => handleOpenModal('ball')}
+                disabled={!session || isTransacting}
+                className={`w-full bg-gradient-to-r from-blue-600 to-cyan-600 text-white font-bold py-3 px-6 rounded-full text-lg shadow-xl transition flex items-center justify-center gap-2 ${
+                  !session || isTransacting ? 'opacity-50 cursor-not-allowed' : 'hover:scale-105'
+                }`}
+              >
+                <img src="/ball_vaulta.png" className="w-7 h-8" alt="Ball" />
+                Ball (2 A)
+              </button>
+              
+              <button 
+                onClick={() => handleOpenModal('envelope')}
+                disabled={!session || isTransacting}
+                className={`w-full bg-gradient-to-r from-yellow-500 via-amber-500 to-yellow-600 text-white font-bold py-3 px-6 rounded-full text-lg shadow-xl transition flex items-center justify-center gap-2 ${
+                  !session || isTransacting ? 'opacity-50 cursor-not-allowed' : 'hover:scale-105'
+                }`}
+              >
+                <img src="/envelope.png" className="w-6 h-8" alt="Candle" />
+                Candle (20 A)
+              </button>
+              
+              <button 
+                onClick={() => handleOpenModal('star')}
+                disabled={!session || auctionEnded || isTransacting}
+                className={`w-full text-white font-bold py-3 px-6 rounded-full text-lg shadow-xl transition ${
+                  !session || auctionEnded || isTransacting
+                    ? 'bg-gray-600 cursor-not-allowed opacity-50' 
+                    : 'bg-gradient-to-r from-yellow-600 to-orange-600 hover:scale-105 animate-pulse-slow'
+                }`}
+              >
+                ⭐ Light Star (≥100 A)
+              </button>
+            </div>
+
+            {/* Log button */}
             <button
               onClick={() => setShowLog(true)}
               className="w-full bg-gray-700 text-white font-bold py-2 px-4 rounded-full text-sm hover:bg-gray-600 transition"
             >
-              📜 Лог действий ({allActions.length})
+              📜 Action Log ({allActions.length})
             </button>
 
-            {/* Кнопка закрытия панели */}
+            {/* Hide panel button */}
             <button
               onClick={() => setShowDonatePanel(false)}
               className="w-full text-gray-300 text-sm py-2 hover:text-white transition"
             >
-              Скрыть
+              Hide
             </button>
           </div>
         )}
@@ -934,14 +1035,16 @@ useEffect(() => {
               <Sparkles className="w-16 h-16 text-yellow-400 mx-auto" />
             </div>
             <h3 className="text-2xl font-bold text-white mb-2 animate-pulse">
-              Ожидаем подтверждения...
+              {isTransacting ? 'Waiting for Anchor...' : 'Waiting for confirmation...'}
             </h3>
             <div className="text-6xl font-bold text-yellow-400 mb-4">
               {countdown}
             </div>
-            <p className="text-pink-200 mb-2">Обычно это занимает 10–30 секунд</p>
+            <p className="text-pink-200 mb-2">
+              {isTransacting ? 'Please confirm transaction in Anchor Wallet' : 'Usually takes 10–30 seconds'}
+            </p>
             <p className="text-yellow-300 text-sm mb-4">
-              Автообновление каждые 5 секунд
+              Auto-refresh after transaction
             </p>
             <button
               onClick={() => {
@@ -950,7 +1053,7 @@ useEffect(() => {
               }}
               className="mt-4 text-gray-300 hover:text-white underline text-sm transition"
             >
-              Закрыть
+              Close
             </button>
           </div>
         </div>
@@ -965,45 +1068,46 @@ useEffect(() => {
             </button>
 
             <h2 className="text-3xl font-bold text-yellow-400 mb-4 text-center animate-pulse">
-              ⭐ Аукцион звезды ⭐
+              ⭐ Star Auction ⭐
             </h2>
 
             <div className="text-center space-y-4 text-white">
-              <p className="text-lg">Текущая ставка: <span className="text-yellow-400 font-bold">{currentBid.toFixed(6)} MLNK</span></p>
-              <p className="text-pink-300 text-sm">Ваша ставка должна быть выше</p>
+              <p className="text-lg">Current bid: <span className="text-yellow-400 font-bold">{currentBid.toFixed(4)} A</span></p>
+              <p className="text-pink-300 text-sm">Your bid must be higher</p>
               <p className="text-2xl font-bold text-yellow-300">{timeLeft}</p>
-              <p className="text-sm text-gray-300">С победителем свяжемся через PayCash</p>
-              <p className="text-pink-400 text-xs">Проигравшие ставки не возвращаются</p>
+              <p className="text-pink-400 text-xs">Losing bids are not refunded</p>
             </div>
+
+            {/* Vaulta native token A always used */}
 
             <div className="my-6">
               <input
                 type="number"
-                step="0.000001"
+                step="0.0001"
                 value={bidAmount}
                 onChange={handleBidChange}
-                placeholder={`Минимум ${minBid.toFixed(6)} MLNK`}
+                placeholder={`Minimum ${minBid.toFixed(4)} A`}
                 className="w-full bg-black/30 border border-yellow-500/50 rounded-lg px-4 py-3 text-white text-center text-xl focus:outline-none focus:border-yellow-400"
               />
               {bidError && <p className="text-red-400 text-sm mt-2 text-center">{bidError}</p>}
             </div>
 
-            <div className="flex justify-center my-8">
-              <QRCodeSVG value={getQRCodeData('star')} size={256} level="H" includeMargin fgColor="#000" className="rounded-2xl shadow-2xl" />
+            <div className="bg-black/40 rounded-lg p-4 space-y-2 text-sm mb-6">
+              <div className="flex justify-between"><span className="text-gray-400">To:</span><span className="text-white font-mono">newyeartrees</span></div>
+              <div className="flex justify-between"><span className="text-gray-400">Your bid:</span><span className="text-yellow-400 font-bold">{bidAmount ? parseFloat(bidAmount).toFixed(4) : minBid.toFixed(4)} A</span></div>
+              <div className="flex justify-between"><span className="text-gray-400">Memo:</span><span className="text-yellow-300">star</span></div>
             </div>
 
-            <div className="bg-black/40 rounded-lg p-4 space-y-2 text-sm">
-              <div className="flex justify-between"><span className="text-gray-400">Кому:</span><span className="text-white font-mono">malinkatrees</span></div>
-              <div className="flex justify-between"><span className="text-gray-400">Ваша ставка:</span><span className="text-yellow-400 font-bold">{bidAmount ? parseFloat(bidAmount).toFixed(6) : minBid.toFixed(6)} MLNK</span></div>
-              <div className="flex justify-between"><span className="text-gray-400">Memo:</span><span className="text-yellow-300">звезда</span></div>
-            </div>
+            <p className="text-center text-yellow-300 mb-4 text-sm">
+              Confirm transaction in Anchor Wallet
+            </p>
 
             <button 
               onClick={handlePaymentDone} 
-              disabled={!bidAmount || parseFloat(bidAmount) <= currentBid}
-              className={`mt-6 w-full text-white font-bold py-4 rounded-full text-lg shadow-2xl transition ${!bidAmount || parseFloat(bidAmount) <= currentBid ? 'bg-gray-600 cursor-not-allowed' : 'bg-gradient-to-r from-yellow-500 to-amber-600 hover:scale-105 animate-pulse'}`}
+              disabled={!session || !bidAmount || parseFloat(bidAmount) <= currentBid || isTransacting}
+              className={`mt-6 w-full text-white font-bold py-4 rounded-full text-lg shadow-2xl transition ${!session || !bidAmount || parseFloat(bidAmount) <= currentBid || isTransacting ? 'bg-gray-600 cursor-not-allowed' : 'bg-gradient-to-r from-yellow-500 to-amber-600 hover:scale-105 animate-pulse'}`}
             >
-              {!bidAmount || parseFloat(bidAmount) <= currentBid ? 'Введите сумму выше' : '✅ Сделать ставку!'}
+              {!session ? 'Connect Wallet First' : !bidAmount || parseFloat(bidAmount) <= currentBid ? 'Enter higher amount' : isTransacting ? 'Processing...' : '✅ Place Bid!'}
             </button>
           </div>
         </div>
@@ -1021,18 +1125,18 @@ useEffect(() => {
             </button>
 
             <h2 className="text-2xl font-bold text-white mb-2 text-center">
-              {modalType === 'light' && '💡 Зажечь огонёк'}
-              {modalType === 'ball' && '🎈 Повесить шарик'}
-              {modalType === 'envelope' && '📮 Послать открытку'}
-              {modalType === 'gift' && '🎁 Подарить гифку'}
+              {modalType === 'light' && '💡 Light Up'}
+              {modalType === 'ball' && '🎈 Hang Ball'}
+              {modalType === 'envelope' && '🕯️ Light Candle'}
             </h2>
             
             <p className="text-pink-300 text-center mb-6">
-              {modalType === 'light' && '1.000000 MLNK'}
-              {modalType === 'ball' && '10.000000 MLNK'}
-              {modalType === 'envelope' && '100.000000 MLNK'}
-              {modalType === 'gift' && '1000.000000 MLNK'}
+              {modalType === 'light' && '0.2 A'}
+              {modalType === 'ball' && '2 A'}
+              {modalType === 'envelope' && '20 A'}
             </p>
+
+            {/* Vaulta native token A always used */}
 
             {modalType === 'envelope' && (
               <div className="mb-4">
@@ -1040,7 +1144,7 @@ useEffect(() => {
                   type="text"
                   value={envelopeText}
                   onChange={(e) => setenvelopeText(e.target.value)}
-                  placeholder="Введите текст открытки (до 200 символов)"
+                  placeholder="Enter candle message (up to 200 characters)"
                   maxLength={200}
                   className="w-full bg-black/30 border border-pink-500/50 rounded-lg px-4 py-2 text-white placeholder-gray-400 focus:outline-none focus:border-pink-500"
                 />
@@ -1048,67 +1152,47 @@ useEffect(() => {
               </div>
             )}
 
-            {modalType === 'gift' && (
-              <div className="mb-4">
-                <input
-                  type="url"
-                  value={giftUrl}
-                  onChange={(e) => setGiftUrl(e.target.value)}
-                  placeholder="https://ссылка_на_гифку.gif"
-                  className="w-full bg-black/30 border border-green-500/50 rounded-lg px-4 py-2 text-white placeholder-gray-400 focus:outline-none focus:border-green-500"
-                />
-                <p className="text-xs text-gray-400 mt-1">Поддерживаются .gif, .png, .jpg</p>
-              </div>
-            )}
-
-            <div className="flex justify-center mb-6">
-              <div className="bg-white p-4 rounded-2xl shadow-2xl relative">
-                <div className="absolute inset-0 bg-gradient-to-br from-yellow-400/20 to-orange-400/20 rounded-2xl animate-pulse"></div>
-                <QRCodeSVG
-                  value={getQRCodeData(modalType)}
-                  size={256}
-                  level="H"
-                  includeMargin={true}
-                  fgColor="#000000"
-                  className="relative z-10"
-                />
-              </div>
-            </div>
-
-            <p className="text-center text-yellow-300 mb-4 text-sm">
-              Сканируй в PayCash 
-            </p>
-
             <div className="bg-black/40 rounded-lg p-4 mb-6 space-y-2 text-sm">
               <div className="flex justify-between items-center">
-                <span className="text-gray-400">Кому:</span>
-                <span className="text-white font-mono">malinkatrees</span>
+                <span className="text-gray-400">To:</span>
+                <span className="text-white font-mono">newyeartrees</span>
               </div>
               <div className="flex justify-between items-center">
-                <span className="text-gray-400">Сумма:</span>
+                <span className="text-gray-400">Amount:</span>
                 <span className="text-pink-300 font-bold">
-                  {modalType === 'light' && '1.000000 MLNK'}
-                  {modalType === 'ball' && '10.000000 MLNK'}
-                  {modalType === 'envelope' && '100.000000 MLNK'}
-                  {modalType === 'gift' && '1000.000000 MLNK'}
+                  {modalType === 'light' && '0.2'}
+                  {modalType === 'ball' && '2'}
+                  {modalType === 'envelope' && '20'}
                 </span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-gray-400">Token:</span>
+                <span className="text-yellow-300 font-mono">A</span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-gray-400">Memo:</span>
                 <span className="text-yellow-300 font-mono text-xs break-all text-right">
-                  {modalType === 'light' && '(пусто)'}
-                  {modalType === 'ball' && '(пусто)'}
-                  {modalType === 'envelope' && (envelopeText.trim() ? envelopeText.trim().substring(0, 50) + (envelopeText.length > 50 ? '...' : '') : '(пусто)')}
-                  {modalType === 'gift' && (giftUrl.trim() ? giftUrl.trim().substring(0, 30) + (giftUrl.length > 30 ? '...' : '') : '(пусто)')}
+                  {modalType === 'light' && '(empty)'}
+                  {modalType === 'ball' && '(empty)'}
+                  {modalType === 'envelope' && (envelopeText.trim() ? envelopeText.trim().substring(0, 50) + (envelopeText.length > 50 ? '...' : '') : '(empty)')}
                 </span>
               </div>
             </div>
 
+            <p className="text-center text-yellow-300 mb-4 text-sm">
+              Confirm transaction in Anchor Wallet
+            </p>
+
             <button
               onClick={handlePaymentDone}
-              className="w-full bg-gradient-to-r from-yellow-500 to-orange-500 text-white font-bold py-4 px-6 rounded-full text-lg shadow-2xl hover:scale-105 transition animate-pulse"
+              disabled={!session || isTransacting}
+              className={`w-full text-white font-bold py-4 px-6 rounded-full text-lg shadow-2xl transition ${
+                !session || isTransacting
+                  ? 'bg-gray-600 cursor-not-allowed opacity-50'
+                  : 'bg-gradient-to-r from-yellow-500 to-orange-500 hover:scale-105 animate-pulse'
+              }`}
             >
-              ✅ Готово, оплатил!
+              {!session ? 'Connect Wallet First' : isTransacting ? 'Processing...' : '✅ Confirm Transaction'}
             </button>
           </div>
         </div>
@@ -1119,7 +1203,7 @@ useEffect(() => {
         <div className="fixed inset-0 bg-black/95 flex flex-col z-50" onClick={() => setShowLog(false)}>
           <div className="flex justify-between items-center p-4 border-b border-yellow-500/30" onClick={(e) => e.stopPropagation()}>
             <h2 className="text-2xl font-bold text-white">
-              {logTab === 'actions' ? '📜 Лог действий' : '🏆 Топ дарителей'}
+              {logTab === 'actions' ? '📜 Action Log' : '🏆 Top Donors'}
             </h2>
             <button
               onClick={() => setShowLog(false)}
@@ -1139,7 +1223,7 @@ useEffect(() => {
                   : 'text-white/70 hover:text-white'
               }`}
             >
-              Лог действий
+              Action Log
             </button>
             <button
               onClick={() => setLogTab('donors')}
@@ -1149,14 +1233,14 @@ useEffect(() => {
                   : 'text-white/70 hover:text-white'
               }`}
             >
-              Топ дарителей
+              Top Donors
             </button>
           </div>
 
           <div className="flex-1 overflow-y-auto p-4 space-y-2" onClick={(e) => e.stopPropagation()}>
             {logTab === 'actions' ? (
               allActions.length === 0 ? (
-                <p className="text-gray-400 text-center">Пока нет действий</p>
+                <p className="text-gray-400 text-center">No actions yet</p>
               ) : (
                 allActions.map((dec, i) => (
                   <div
@@ -1166,25 +1250,24 @@ useEffect(() => {
                     <div className="flex justify-between items-start">
                       <div className="flex-1">
                         <div className="text-yellow-400 font-bold">
-                          {dec.type === 'light' && `💡 Зажёг ${Math.floor(typeof dec.amount === 'number' ? dec.amount : parseFloat(dec.amount || '0'))} огоньков!`}
-                          {dec.type === 'ball' && '🎈 Шарик'}
-                          {(dec.type === 'candle' || dec.type === 'envelope') && '📮 Открытка'}
-                          {dec.type === 'gift' && '🎁 Подарок'}
+                          {dec.type === 'light' && `💡 Lit ${Math.floor(typeof dec.amount === 'number' ? dec.amount : parseFloat(dec.amount || '0'))} light(s)!`}
+                          {dec.type === 'ball' && '🎈 Ball'}
+                          {(dec.type === 'candle' || dec.type === 'envelope') && '🕯️ Candle'}
                           {dec.type === 'star' && (
                             <>
-                              ⭐ {dec.username || dec.from_account} делает ставку на право зажечь звезду на Новый год! 🎉
-                              {(typeof dec.amount === 'number' ? dec.amount : parseFloat(dec.amount || '0')) === currentBid && ' (текущий лидер!)'}
+                              ⭐ {dec.username || dec.from_account} placed a bid to light the star for New Year! 🎉
+                              {(typeof dec.amount === 'number' ? dec.amount : parseFloat(dec.amount || '0')) === currentBid && ' (current leader!)'}
                             </>
                           )}
                         </div>
                         <div className="text-white mt-1">
-                          От: {dec.from_account}
+                          From: {dec.from_account}
                         </div>
                         <div className="text-pink-300 text-xs mt-1">
-                          Сумма: {(() => {
+                          Amount: {(() => {
                             const amt = typeof dec.amount === 'number' ? dec.amount : parseFloat(String(dec.amount || '0'))
-                            return amt.toFixed(6)
-                          })()} MLNK
+                            return amt.toFixed(4)
+                          })()} A
                         </div>
                       </div>
                     </div>
@@ -1193,7 +1276,7 @@ useEffect(() => {
               )
             ) : (
               topDonors.length === 0 ? (
-                <p className="text-gray-400 text-center">Загрузка...</p>
+                <p className="text-gray-400 text-center">Loading...</p>
               ) : (
                 topDonors.map((donor, i) => {
                   const stats = donorStats.get(donor.from_account)
@@ -1211,21 +1294,21 @@ useEffect(() => {
                           </div>
                           <div className="text-pink-300 text-xs mt-2 space-y-1">
                             {stats && stats.lights > 0 && (
-                              <div>Зажёг огоньков: {stats.lights}</div>
+                              <div>Lit lights: {stats.lights}</div>
                             )}
                             {stats && stats.balls > 0 && (
-                              <div>Повесил шариков: {stats.balls}</div>
+                              <div>Hung balls: {stats.balls}</div>
                             )}
                             {stats && stats.envelopes > 0 && (
-                              <div>Написал поздравлений: {stats.envelopes}</div>
+                              <div>Lit candles: {stats.envelopes}</div>
                             )}
                             {stats && stats.stars > 0 && (
-                              <div>{isLeader ? '🏆 ' : ''}Ставок на аукционе: {stats.stars}</div>
+                              <div>{isLeader ? '🏆 ' : ''}Auction bids: {stats.stars}</div>
                             )}
                           </div>
                         </div>
                         <div className="text-white font-bold text-lg">
-                          {donor.total_amount.toFixed(6)} MLNK
+                          {donor.total_amount.toFixed(4)} A
                         </div>
                       </div>
                     </div>
@@ -1237,20 +1320,17 @@ useEffect(() => {
         </div>
       )}
 
-      {/* Статистика вверху */}
+      {/* Statistics header */}
       {!loading && (
         <div className="absolute top-4 left-4 right-4 z-30 bg-black/60 backdrop-blur-sm rounded-lg p-3 text-center">
-          <p className="text-pink-300 text-sm">
-            Огоньков: {stats.lights} • Шариков: {stats.balls} • Открыток: {stats.envelopes} 
+          <p className="text-pink-300 text-sm font-bold">
+            Vaulta Tree 2026
+          </p>
+          <p className="text-pink-300 text-xs mt-1">
+            Lights: {stats.lights} • Balls: {stats.balls} • Candles: {stats.envelopes} 
           </p>
           <p className="text-pink-200 text-xs mt-1">
-            Всего: {stats.lights+stats.balls+stats.envelopes} {' '}
-            {(() => {
-              const n = stats.total
-              if (n % 10 === 1 && n % 100 !== 11) return 'украшение'
-              if ([2,3,4].includes(n % 10) && ![12,13,14].includes(n % 100)) return 'украшения'
-              return 'украшений'
-            })()}
+            Total: {stats.lights+stats.balls+stats.envelopes} decoration{stats.lights+stats.balls+stats.envelopes !== 1 ? 's' : ''}
           </p>
         </div>
       )}

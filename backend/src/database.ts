@@ -4,6 +4,11 @@ import { Decoration, DecorationType } from './types.js'
 
 const supabase = createClient(config.supabase.url, config.supabase.anonKey)
 
+// Admin клиент для записи (использует service_role key)
+const supabaseAdmin = config.supabase.serviceRoleKey 
+  ? createClient(config.supabase.url, config.supabase.serviceRoleKey)
+  : null
+
 // In-memory кеш обработанных tx_id для снижения Egress трафика
 // При старте загружается последние 1000 tx_id из БД
 const processedTxCache = new Set<string>()
@@ -68,7 +73,10 @@ export async function insertDecoration(decoration: Decoration, skipDeduplication
       type: decoration.type.toLowerCase()
     }
 
-    const { data, error } = await supabase
+    // Используем supabaseAdmin для записи (если доступен), иначе обычный supabase
+    const client = supabaseAdmin || supabase
+    
+    const { data, error } = await client
       .from('decorations')
       .upsert(
         decorationToInsert,

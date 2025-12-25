@@ -2,11 +2,10 @@
 
 CREATE TABLE IF NOT EXISTS decorations (
   id BIGSERIAL PRIMARY KEY,
-  type TEXT NOT NULL CHECK (type IN ('light', 'ball', 'candle', 'gift')),
+  type TEXT NOT NULL CHECK (type IN ('light', 'ball', 'candle', 'star')),
   from_account TEXT NOT NULL,
   username TEXT,
   text TEXT,
-  image_url TEXT,
   amount TEXT NOT NULL,
   tx_id TEXT NOT NULL UNIQUE,
   created_at TIMESTAMPTZ DEFAULT NOW()

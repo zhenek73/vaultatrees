@@ -1,4 +1,4 @@
-export type DecorationType = 'light' | 'ball' | 'candle' | 'gift' | 'star'
+export type DecorationType = 'light' | 'ball' | 'candle' | 'star'
 
 export interface Decoration {
   id?: number
@@ -19,5 +19,6 @@ export interface EOSTransfer {
   memo: string
   trx_id: string
   block_time: string
+  contract?: string  // Vaulta native token A, contract core.vaulta (2025)
 }
 

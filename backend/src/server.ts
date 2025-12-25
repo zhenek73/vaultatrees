@@ -67,7 +67,7 @@ app.get('*', (req, res) => {
 })
 
 export function startServer(): void {
-  const port = parseInt(process.env.PORT || '4000', 10)
+  const port = parseInt(process.env.PORT || '3000', 10)
 
   app.listen(port, '0.0.0.0', () => {
     console.log('✅ Server listening on port ' + String(port))

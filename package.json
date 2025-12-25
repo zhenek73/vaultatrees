@@ -5,5 +5,11 @@
   "scripts": {
     "build": "cd frontend && npm ci && npm run build && cd ../backend && npm ci && npm run build",
     "start": "cd backend && npm start"
+  },
+  "dependencies": {
+    "@wharfkit/session": "^1.6.1",
+    "@wharfkit/wallet-plugin-anchor": "^1.6.1",
+    "@wharfkit/web-renderer": "^1.4.3",
+    "isomorphic-ws": "^5.0.0"
   }
 }

@@ -1,6 +1,9 @@
 import ReactDOM from 'react-dom/client'
 import App from './App'
+import { WalletProvider } from './wallet/WalletContext'
 import './index.css'
+
+// Polyfills removed — not needed for standard Wharfkit configuration
 
 // Безопасная инициализация Telegram SDK — только в реальном Telegram
 if (typeof window !== 'undefined') {
@@ -34,7 +37,7 @@ if (!rootElement) {
 }
 
 ReactDOM.createRoot(rootElement).render(
- 
+  <WalletProvider>
     <App />
- 
+  </WalletProvider>
 )

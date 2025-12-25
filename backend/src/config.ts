@@ -8,12 +8,15 @@ export const config = {
   
   supabase: {
     url: process.env.SUPABASE_URL || '',
-    anonKey: process.env.SUPABASE_ANON_KEY || ''
+    anonKey: process.env.SUPABASE_ANON_KEY || '',
+    serviceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY || ''
   },
   
   eos: {
-    contract: process.env.EOS_CONTRACT || 'malinka.token',
-    account: process.env.EOS_ACCOUNT || 'malinkatrees',
+    // Vaulta native token A, contract core.vaulta (2025)
+    // Default contracts: core.vaulta for A token
+    contracts: (process.env.EOS_CONTRACTS || 'core.vaulta').split(',').map((c: string) => c.trim()),
+    account: process.env.EOS_ACCOUNT || 'newyeartrees',
     hyperionApiUrl: process.env.HYPERION_API_URL || 'https://eos.hyperion.eosrio.io/v2'
   }
 }

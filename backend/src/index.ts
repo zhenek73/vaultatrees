@@ -1,7 +1,7 @@
 import { config } from './config.js'
 import { startServer } from './server.js'
 
-console.log('🎄 Ёлка Малинка Backend Starting...')
+console.log('🎄 Vaulta Tree 2026 Backend Starting...')
 console.log('')
 
 // Проверка конфигурации
@@ -16,8 +16,8 @@ if (!config.supabase.url || !config.supabase.anonKey) {
 }
 
 console.log('✅ Configuration loaded')
-console.log(`   EOS Contract: ${config.eos.contract}`)
-console.log(`   EOS Account: ${config.eos.account}`)
+console.log(`🎄 Tracking contract: ${config.eos.account}`)
+console.log(`💰 Token contract: ${config.eos.contracts.join(', ')} (token A)`)
 console.log(`   Hyperion API: ${config.eos.hyperionApiUrl}`)
 console.log('')
 

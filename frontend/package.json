@@ -9,6 +9,9 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.38.4",
     "@telegram-apps/sdk": "^3.11.8",
+    "@wharfkit/session": "^1.6.1",
+    "@wharfkit/wallet-plugin-anchor": "^1.6.1",
+    "@wharfkit/web-renderer": "^1.4.3",
     "lucide-react": "^0.263.1",
     "qrcode.react": "^4.2.0",
     "react": "^18.2.0",
