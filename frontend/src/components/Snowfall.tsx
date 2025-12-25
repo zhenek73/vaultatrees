@@ -48,12 +48,14 @@ const Snowfall: FC<SnowfallProps> = ({ onBurst }) => {
         return (
           <div
             key={i}
-            className={`absolute text-white ${size} ${isBurst ? 'animate-burst' : 'animate-fall'} pointer-events-auto cursor-pointer`}
+            className={`absolute text-white ${size} pointer-events-auto cursor-pointer`}
             onClick={(e) => { e.stopPropagation(); handleClick(i) }}
             style={{
               left: `${(i * 11) % 100}%`,
               top: `-${startY}%`,
               '--drift': `${drift}px`,
+              // Используем отдельные свойства вместо Tailwind animate-* классов для избежания конфликта
+              animationName: isBurst ? 'burst' : 'fall',
               animationDuration: isBurst ? '1s' : `${duration}s`,
               animationDelay: isBurst ? '0s' : `${delay}s`,
               animationTimingFunction: isBurst ? 'ease-out' : 'linear',

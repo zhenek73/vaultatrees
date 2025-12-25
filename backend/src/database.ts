@@ -166,12 +166,12 @@ export async function getDecorations(limit: number = 1000): Promise<Decoration[]
   }
 }
 
-export async function getTopDonors(limit: number = 10): Promise<Array<{ from_account: string; total_amount: number; count: number }>> {
+export async function getTopDonors(limit: number = 10): Promise<Array<{ from_account: string; total_amount: number; count: number; lights_count: number; balls_count: number; envelopes_count: number; stars_count: number }>> {
   try {
     console.log(`📊 [DB] Fetching top donors (limit: ${limit})...`)
     const { data, error } = await supabase
       .from('decorations')
-      .select('from_account, amount')
+      .select('from_account, amount, type')
       .order('created_at', { ascending: false })
       .limit(10000) // Получаем больше данных для агрегации
 
@@ -182,32 +182,76 @@ export async function getTopDonors(limit: number = 10): Promise<Array<{ from_acc
     
     console.log(`📊 [DB] Processing ${data?.length || 0} donation records...`)
 
-    // Группируем по аккаунту и суммируем
-    const donorsMap = new Map<string, { total: number; count: number }>()
+    // Группируем по аккаунту и суммируем с учётом типов украшений
+    const donorsMap = new Map<string, { 
+      total: number
+      count: number
+      lights_count: number
+      balls_count: number
+      envelopes_count: number
+      stars_count: number
+    }>()
     
     data?.forEach((item: any) => {
-      // Парсим amount из формата "1.0000 MALINKA" или "1.0000"
+      // Парсим amount из формата "1.0000 A" или "1.0000"
       const amountStr = item.amount || '0'
       const amountMatch = amountStr.toString().match(/^(\d+\.?\d*)/)
       const amount = amountMatch ? parseFloat(amountMatch[1]) : 0
       
-      const existing = donorsMap.get(item.from_account) || { total: 0, count: 0 }
+      const type = (item.type || '').toLowerCase()
+      const existing = donorsMap.get(item.from_account) || { 
+        total: 0, 
+        count: 0,
+        lights_count: 0,
+        balls_count: 0,
+        envelopes_count: 0,
+        stars_count: 0
+      }
+      
+      // Учитываем тип украшения
+      if (type === 'light') {
+        existing.lights_count += 1
+      } else if (type === 'ball') {
+        existing.balls_count += 1
+      } else if (type === 'candle' || type === 'envelope') {
+        existing.envelopes_count += 1
+      } else if (type === 'star') {
+        existing.stars_count += 1
+      }
+      
       donorsMap.set(item.from_account, {
         total: existing.total + amount,
-        count: existing.count + 1
+        count: existing.count + 1,
+        lights_count: existing.lights_count,
+        balls_count: existing.balls_count,
+        envelopes_count: existing.envelopes_count,
+        stars_count: existing.stars_count
       })
     })
 
     const result = Array.from(donorsMap.entries())
-      .map(([from_account, { total, count }]) => ({
+      .map(([from_account, stats]) => ({
         from_account,
-        total_amount: total,
-        count
+        total_amount: stats.total,
+        count: stats.count,
+        lights_count: stats.lights_count,
+        balls_count: stats.balls_count,
+        envelopes_count: stats.envelopes_count,
+        stars_count: stats.stars_count
       }))
+      // Сортируем по total_amount (lights уже учитываются в сумме, так как каждый light = 0.2 A)
       .sort((a, b) => b.total_amount - a.total_amount)
       .slice(0, limit)
     
     console.log(`✅ [DB] Calculated ${result.length} top donors`)
+    console.log('Top donors calculated:', result.map(d => ({
+      account: d.from_account,
+      total: d.total_amount.toFixed(4),
+      lights: d.lights_count,
+      balls: d.balls_count,
+      postcards: d.envelopes_count,
+      stars: d.stars_count
+    })))
     return result
   } catch (error) {
     console.error('❌ [DB] Error calculating top donors: ' + String(error))

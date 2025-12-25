@@ -129,8 +129,8 @@ function parseTransfer(transfer: EOSTransfer): { type: DecorationType | null; co
     }
   }
   
-  // ≥100 → участие в аукционе звезды (type = 'star')
-  if (amount >= 100) {
+  // ≥1 → участие в аукционе звезды (type = 'star')
+  if (amount >= 1) {
     return { 
       type: 'star',
       username: transfer.from
@@ -158,6 +158,7 @@ async function processTransfer(transfer: EOSTransfer): Promise<void> {
   }
   
   console.log(`✅ [Vaulta] Parsed transfer as type: ${parsed.type} (amount: ${transfer.quantity})`)
+  console.log('Parsed decoration:', { type: parsed.type, amount: transfer.quantity, from: transfer.from })
 
   // Vaulta native token A, contract core.vaulta (2025)
   // Парсим amount из quantity (формат "0.2000 A" или "2.0000 A" и т.д.)

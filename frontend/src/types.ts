@@ -17,5 +17,9 @@ export interface TopDonor {
   from_account: string
   total_amount: number
   count: number
+  lights_count?: number
+  balls_count?: number
+  envelopes_count?: number
+  stars_count?: number
 }
 
