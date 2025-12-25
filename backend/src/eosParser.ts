@@ -50,10 +50,17 @@ async function fetchTransfers(limit: number = 100): Promise<EOSTransfer[]> {
           if (data.to === config.eos.account && 
               contract && supportedContracts.includes(contract)) {
               
-              const txId = action.trx_id || action.action_trace?.trx_id || ''
+              // Нормализация txId к строке
+              const rawTxId = action.trx_id || action.action_trace?.trx_id || ''
+              const txId = rawTxId ? String(rawTxId).trim() : ''
               
-              // Пропускаем дубликаты
-              if (txId && seenTxIds.has(txId)) {
+              // Пропускаем дубликаты и невалидные txId
+              if (!txId || txId === '[object Object]') {
+                console.warn(`⚠️  [Vaulta] Skipping transfer with invalid txId: ${JSON.stringify(rawTxId)}`)
+                continue
+              }
+              
+              if (seenTxIds.has(txId)) {
                 continue
               }
               seenTxIds.add(txId)
@@ -61,14 +68,15 @@ async function fetchTransfers(limit: number = 100): Promise<EOSTransfer[]> {
               // Парсим amount из data.quantity (Vaulta A token, contract core.vaulta)
               const quantity = data.quantity || '0.0000 A'
               
+              // Убеждаемся, что все поля - строки (особенно memo для сохранения кириллицы)
               transfers.push({
-                from: data.from || contract || '',
-                to: data.to,
-                quantity: quantity,
-                memo: data.memo || '',
-                trx_id: txId,
-                block_time: action['@timestamp'] || action.block_time || new Date().toISOString(),
-                contract: contract  // сохраняем контракт для определения токена
+                from: String(data.from || contract || '').trim(),
+                to: String(data.to || '').trim(),
+                quantity: String(quantity).trim(),
+                memo: String(data.memo || '').trim(),  // Сохраняем кириллицу полностью
+                trx_id: txId,  // Уже нормализован выше
+                block_time: String(action['@timestamp'] || action.block_time || new Date().toISOString()).trim(),
+                contract: String(contract || '').trim()  // сохраняем контракт для определения токена
               })
               
               console.log(`📥 [Vaulta] Found transfer from ${contract}: ${quantity} from ${data.from}, memo: "${data.memo}"`)
@@ -174,13 +182,20 @@ async function processTransfer(transfer: EOSTransfer): Promise<void> {
   
   // Для звезды создаём одну запись с полной суммой
   if (parsed.type === 'star') {
+    // Нормализация tx_id к строке
+    const cleanTxId = String(transfer.trx_id || '').trim()
+    if (!cleanTxId || cleanTxId === '[object Object]') {
+      console.error(`❌ [Vaulta] Invalid tx_id for star decoration: ${JSON.stringify(transfer.trx_id)}`)
+      return
+    }
+    
     const decoration: Decoration = {
       type: 'star',
       from_account: transfer.from,
       username: parsed.username || transfer.from || undefined,
       text: undefined,
       amount: amount.toFixed(precision),
-      tx_id: transfer.trx_id,
+      tx_id: cleanTxId,
       image_url: token  // Vaulta native token A
     }
 
@@ -195,6 +210,13 @@ async function processTransfer(transfer: EOSTransfer): Promise<void> {
   // Для огоньков создаём одну запись (0.2 → 1 огонёк)
   const count = parsed.type === 'light' ? (parsed.count || 1) : 1
   
+  // Нормализация tx_id к строке
+  const cleanTxId = String(transfer.trx_id || '').trim()
+  if (!cleanTxId || cleanTxId === '[object Object]') {
+    console.error(`❌ [Vaulta] Invalid tx_id for decoration: ${JSON.stringify(transfer.trx_id)}`)
+    return
+  }
+  
   for (let i = 0; i < count; i++) {
     const decoration: Decoration = {
       type: parsed.type.toLowerCase() as DecorationType,
@@ -202,7 +224,7 @@ async function processTransfer(transfer: EOSTransfer): Promise<void> {
       username: parsed.username || undefined,
       text: parsed.type === 'candle' ? (parsed.text || undefined) : undefined,
       amount: amount.toFixed(precision),
-      tx_id: transfer.trx_id,
+      tx_id: cleanTxId,
       image_url: token  // Vaulta native token A
     }
 
@@ -259,8 +281,16 @@ async function pollTransactions(): Promise<void> {
       existingTxIds = new Set<string>()  // пустой сет → всё считается новым
     } else {
       console.log(`📥 [Vaulta] Found ${transfers.length} transfer(s), filtering duplicates...`)
-      // ✅ Batch-проверка: получаем все tx_id из текущего batch
-      const txIds = transfers.map(t => t.trx_id)
+      // ✅ Batch-проверка: получаем все tx_id из текущего batch и нормализуем к строкам
+      const txIds = transfers
+        .map(t => {
+          const txId = t.trx_id
+          // Нормализуем к строке, убираем пустые значения
+          return txId ? String(txId).trim() : null
+        })
+        .filter((id): id is string => id !== null && id.length > 0)
+      
+      console.log(`📦 [Vaulta] Batch check: ${txIds.length} txIds from ${transfers.length} transfers`)
       existingTxIds = await checkExistingTxIds(txIds)
     }
     

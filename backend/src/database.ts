@@ -43,11 +43,18 @@ export async function initTxCache(): Promise<void> {
 
 export async function insertDecoration(decoration: Decoration, skipDeduplication: boolean = false): Promise<Decoration | null> {
   try {
+    // Нормализация tx_id к строке перед всеми операциями
+    const cleanTxId = String(decoration.tx_id || '').trim()
+    if (!cleanTxId || cleanTxId === '[object Object]') {
+      console.error(`❌ [DB] Invalid tx_id: ${JSON.stringify(decoration.tx_id)}`)
+      return null
+    }
+    
     // ✅ ВРЕМЕННО: если skipDeduplication = true, пропускаем проверку дубликатов
     if (!skipDeduplication) {
       // ✅ Сначала проверяем in-memory кеш (мгновенно, без запроса к Supabase)
-      if (processedTxCache.has(decoration.tx_id)) {
-        console.log(`⚠️  [Cache] Transaction ${decoration.tx_id.substring(0, 8)}... already in cache, skipping`)
+      if (processedTxCache.has(cleanTxId)) {
+        console.log(`⚠️  [Cache] Transaction ${cleanTxId.substring(0, 8)}... already in cache, skipping`)
         return null
       }
 
@@ -55,23 +62,26 @@ export async function insertDecoration(decoration: Decoration, skipDeduplication
       const { data: existing } = await supabase
         .from('decorations')
         .select('id')
-        .eq('tx_id', decoration.tx_id)
+        .eq('tx_id', cleanTxId)
         .single()
 
       if (existing) {
-        console.log(`⚠️  [DB] Transaction ${decoration.tx_id.substring(0, 8)}... found in DB, adding to cache`)
-        processedTxCache.add(decoration.tx_id)
+        console.log(`⚠️  [DB] Transaction ${cleanTxId.substring(0, 8)}... found in DB, adding to cache`)
+        processedTxCache.add(cleanTxId)
         return null
       }
     } else {
-      console.log(`🔄 [DB] FORCE_REPROCESS: skipping deduplication for ${decoration.tx_id.substring(0, 8)}...`)
+      console.log(`🔄 [DB] FORCE_REPROCESS: skipping deduplication for ${cleanTxId.substring(0, 8)}...`)
     }
 
-    // Принудительно сохраняем type в нижнем регистре
+    // Принудительно сохраняем type в нижнем регистре и нормализуем tx_id
     const decorationToInsert = {
       ...decoration,
-      type: decoration.type.toLowerCase()
+      type: decoration.type.toLowerCase(),
+      tx_id: cleanTxId  // Используем нормализованный tx_id
     }
+    
+    console.log(`💾 [DB] Inserting decoration: type=${decorationToInsert.type}, from=${decorationToInsert.from_account}, tx_id=${cleanTxId.substring(0, 16)}...`)
 
     // Используем supabaseAdmin для записи (если доступен), иначе обычный supabase
     const client = supabaseAdmin || supabase
@@ -93,10 +103,10 @@ export async function insertDecoration(decoration: Decoration, skipDeduplication
       return null
     }
 
-    console.log(`✅ Decoration inserted: ${decoration.type} from ${decoration.from_account}`)
+    console.log(`✅ Decoration inserted: ${decoration.type} from ${decoration.from_account}, tx_id=${cleanTxId.substring(0, 16)}...`)
     
     // ✅ Добавляем tx_id в кеш после успешной вставки
-    processedTxCache.add(decoration.tx_id)
+    processedTxCache.add(cleanTxId)
     
     return data
   } catch (error) {
@@ -116,12 +126,29 @@ export async function insertDecoration(decoration: Decoration, skipDeduplication
 export async function checkExistingTxIds(txIds: string[]): Promise<Set<string>> {
   try {
     if (txIds.length === 0) return new Set()
-    console.log(`🔍 [Batch] Checking ${txIds.length} tx_ids in database...`)
+    
+    // Нормализация txIds к массиву чистых строк для Supabase .in() запроса
+    const cleanTxIds = txIds
+      .map(id => {
+        // Преобразуем в строку и убираем пробелы
+        const str = String(id).trim()
+        // Фильтруем пустые строки и объекты, которые не преобразовались в строку
+        return str.length > 0 && str !== '[object Object]' ? str : null
+      })
+      .filter((id): id is string => id !== null)
+    
+    if (cleanTxIds.length === 0) {
+      console.log(`⚠️  [Batch] All txIds were invalid, skipping check`)
+      return new Set()
+    }
+    
+    console.log(`🔍 [Batch] Checking ${cleanTxIds.length} tx_ids in database (from ${txIds.length} raw)...`)
+    console.log('[Batch] Cleaned txIds for Supabase:', cleanTxIds.slice(0, 5), cleanTxIds.length > 5 ? '...' : '')
     
     const { data, error } = await supabase
       .from('decorations')
       .select('tx_id')
-      .in('tx_id', txIds)
+      .in('tx_id', cleanTxIds)
 
     if (error) {
       console.error('❌ [Batch] Error checking tx_ids: ' + JSON.stringify(error))
